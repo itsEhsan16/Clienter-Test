@@ -20,7 +20,17 @@ export default function DashboardPage() {
   const supabase = useMemo(() => createClientComponentClient(), [])
 
   useEffect(() => {
-    if (!user || authLoading) return
+    // If auth is still initializing, show loader until it finishes.
+    if (authLoading) {
+      setIsLoading(true)
+      return
+    }
+
+    // If auth finished but there's no user, stop loading (prevents infinite skeleton)
+    if (!user) {
+      setIsLoading(false)
+      return
+    }
 
     const fetchDashboardData = async () => {
       setIsLoading(true)

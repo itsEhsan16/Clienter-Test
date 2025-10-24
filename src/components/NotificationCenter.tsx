@@ -55,13 +55,23 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
     setReminders(reminders.filter((r) => r.id !== reminderId))
   }
 
-  if (!isOpen) return null
-
+  // Keep the element mounted so we can animate in/out with CSS.
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
-      <div className="absolute inset-0 bg-black bg-opacity-25" onClick={onClose} />
+    <div className="fixed inset-0 z-50 overflow-hidden pointer-events-none">
+      {/* Overlay: fade in/out */}
+      <div
+        onClick={onClose}
+        className={`absolute inset-0 bg-black bg-opacity-25 transition-opacity duration-300 ${
+          isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0'
+        }`}
+      />
 
-      <div className="fixed inset-y-0 right-0 max-w-md w-full bg-white shadow-xl">
+      {/* Panel: slide in/out from the right. Slightly narrower (max-w-sm instead of max-w-md). */}
+      <div
+        className={`fixed inset-y-0 right-0 max-w-sm w-full bg-white shadow-xl transform transition-transform duration-300 ease-out pointer-events-auto ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
         <div className="h-full flex flex-col">
           <div className="px-4 py-6 bg-primary-600 sm:px-6">
             <div className="flex items-center justify-between">

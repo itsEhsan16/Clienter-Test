@@ -42,7 +42,7 @@ export function Sidebar() {
       {/* Mobile Menu Button */}
       <button
         onClick={() => setIsMobileOpen(!isMobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-black text-white hover:bg-gray-800 transition-colors"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-black text-white hover:bg-zinc-800 transition-colors"
       >
         {isMobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
       </button>
@@ -58,7 +58,7 @@ export function Sidebar() {
       {/* Sidebar */}
       <aside
         className={`
-          fixed top-0 left-0 h-full bg-black text-white z-40 transition-all duration-300 ease-in-out
+          fixed top-0 left-0 h-full bg-zinc-950 text-white z-40 transition-all duration-300 ease-in-out
           ${isCollapsed ? 'w-20' : 'w-64'}
           ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
@@ -110,7 +110,7 @@ export function Sidebar() {
                       ${
                         isActive
                           ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/50'
-                          : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                          : 'text-gray-300 hover:bg-zinc-800 hover:text-white'
                       }
                       ${isCollapsed ? 'justify-center' : ''}
                     `}
@@ -128,7 +128,7 @@ export function Sidebar() {
         <div className="border-t border-gray-800 p-4">
           {!isCollapsed ? (
             <div className="mb-4">
-              <div className="flex items-center space-x-3 px-2 py-2 rounded-lg bg-gray-900">
+              <div className="flex items-center space-x-3 px-2 py-2 rounded-lg bg-zinc-900">
                 <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center">
                   <span className="text-white font-semibold text-sm">
                     {profile?.full_name?.charAt(0) || user?.email?.charAt(0).toUpperCase()}
@@ -156,7 +156,7 @@ export function Sidebar() {
             <button
               onClick={() => setShowNotifications(true)}
               className={`
-                w-full flex items-center px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white transition-colors
+                w-full flex items-center px-3 py-2 rounded-lg text-gray-300 hover:bg-zinc-800 hover:text-white transition-colors
                 ${isCollapsed ? 'justify-center' : ''}
               `}
             >
@@ -166,7 +166,7 @@ export function Sidebar() {
             <button
               onClick={handleSignOut}
               className={`
-                w-full flex items-center px-3 py-2 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-red-400 transition-colors
+                w-full flex items-center px-3 py-2 rounded-lg text-gray-300 hover:bg-zinc-800 hover:text-red-400 transition-colors
                 ${isCollapsed ? 'justify-center' : ''}
               `}
             >
