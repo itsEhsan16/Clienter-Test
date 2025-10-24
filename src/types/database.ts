@@ -13,6 +13,8 @@ export interface Client {
   user_id: string
   name: string
   phone: string | null
+  company?: string | null
+  tags?: string[]
   project_description: string | null
   budget: number | null
   status: 'general' | 'important' | 'working' | 'finished'

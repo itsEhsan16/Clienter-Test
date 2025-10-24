@@ -9,6 +9,7 @@ interface AuthContextType {
   user: User | null
   profile: Profile | null
   loading: boolean
+  supabase: any
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
 }
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   loading: true,
+  supabase: null,
   signOut: async () => {},
   refreshProfile: async () => {},
 })
@@ -166,8 +168,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(
-    () => ({ user, profile, loading, signOut, refreshProfile }),
-    [user, profile, loading]
+    () => ({ user, profile, loading, supabase, signOut, refreshProfile }),
+    [user, profile, loading, supabase]
   )
 
   // Show error if Supabase is not configured

@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { Navigation } from '@/components/Navigation'
-import { createBrowserClient } from '@/lib/supabase'
 import { Client, Project, Meeting } from '@/types/database'
 import {
   formatCurrency,
@@ -18,7 +17,7 @@ import { ArrowLeft, Edit, Trash2, Plus, Phone, Calendar, DollarSign } from 'luci
 import Link from 'next/link'
 
 export default function ClientDetailPage() {
-  const { user } = useAuth()
+  const { user, supabase } = useAuth()
   const router = useRouter()
   const params = useParams()
   const clientId = params?.id as string
@@ -33,7 +32,6 @@ export default function ClientDetailPage() {
     budget: '',
     status: 'important' as 'general' | 'important' | 'working' | 'finished',
   })
-  const supabase = createBrowserClient()
 
   useEffect(() => {
     if (!user || !clientId) return

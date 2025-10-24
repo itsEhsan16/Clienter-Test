@@ -6,14 +6,13 @@ export const exportToJSON = (data: any, filename: string) => {
 }
 
 export const exportToCSV = (data: Client[], filename: string) => {
-  const headers = ['Name', 'Email', 'Phone', 'Company', 'Tags', 'Notes', 'Created']
+  const headers = ['Name', 'Phone', 'Project Description', 'Budget', 'Status', 'Created']
   const rows = data.map((client) => [
     client.name,
-    client.email || '',
     client.phone || '',
-    client.company || '',
-    client.tags.join('; '),
-    client.notes || '',
+    client.project_description || '',
+    client.budget ? client.budget.toString() : '',
+    client.status,
     new Date(client.created_at).toLocaleDateString(),
   ])
 
@@ -91,15 +90,4 @@ export const formatCurrency = (amount: number | null): string => {
     style: 'currency',
     currency: 'USD',
   }).format(amount)
-}
-
-export const parseTagsInput = (input: string): string[] => {
-  return input
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter((tag) => tag.length > 0)
-}
-
-export const formatTags = (tags: string[]): string => {
-  return tags.join(', ')
 }

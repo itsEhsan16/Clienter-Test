@@ -265,7 +265,7 @@ export default function DashboardPage() {
                             {formatTimeAgo(client.created_at)}
                           </p>
                         </div>
-                        {client.tags.length > 0 && (
+                        {Array.isArray(client.tags) && client.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1">
                             {client.tags.slice(0, 3).map((tag) => (
                               <span key={tag} className="badge-gray">

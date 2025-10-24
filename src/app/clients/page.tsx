@@ -4,7 +4,6 @@ import { useEffect, useState, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { TopBar } from '@/components/TopBar'
 import { ClientsListSkeleton } from '@/components/SkeletonLoaders'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Client } from '@/types/database'
 import {
   exportToCSV,
@@ -17,12 +16,11 @@ import { Plus, Search, Download, Users as UsersIcon, X, Phone } from 'lucide-rea
 import Link from 'next/link'
 
 export default function ClientsPage() {
-  const { user, loading: authLoading } = useAuth()
+  const { user, loading: authLoading, supabase } = useAuth()
   const [clients, setClients] = useState<Client[]>([])
   const [filteredClients, setFilteredClients] = useState<Client[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
-  const supabase = useMemo(() => createClientComponentClient(), [])
 
   useEffect(() => {
     if (!user || authLoading) return

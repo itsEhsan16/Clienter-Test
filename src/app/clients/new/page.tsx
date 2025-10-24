@@ -4,17 +4,15 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { TopBar } from '@/components/TopBar'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
 export default function NewClientPage() {
-  const { user } = useAuth()
+  const { user, supabase } = useAuth()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
-  const supabase = createClientComponentClient()
 
   const [formData, setFormData] = useState({
     name: '',
