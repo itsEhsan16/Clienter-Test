@@ -64,12 +64,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .from('profiles')
           .insert([{ id: userId, email, full_name: '' }])
         if (insertError) {
+          setError('Failed to create profile for user. Please contact support.')
           console.error('[Auth] ensureProfile: error inserting profile', insertError)
         } else {
           console.log('[Auth] ensureProfile: created missing profile for user', userId)
         }
+      } else {
+        // Check for ID mismatch
+        if (existingProfile.id !== userId) {
+          setError('Profile ID mismatch! Auth user.id does not match profiles.id.')
+          console.error('[Auth] Profile ID mismatch:', {
+            authUserId: userId,
+            profileId: existingProfile.id,
+          })
+        }
       }
     } catch (err) {
+      setError('Error ensuring profile exists. See console for details.')
       console.error('[Auth] ensureProfile: error', err)
     }
   }
@@ -95,8 +106,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           typeof error.message === 'string' &&
           error.message.includes("Could not find the table 'public.profiles'")
         ) {
+          setError('Profiles table missing. Did you run supabase/schema.sql?')
           console.warn('[Auth] profiles table missing. Did you run supabase/schema.sql?')
         }
+        setError('Error fetching profile. See console for details.')
         console.error('[Auth] Error fetching profile:', error)
         setProfile(null)
         return
@@ -106,11 +119,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const profileData = data as Profile
         profileCacheRef.current.set(userId, profileData)
         setProfile(profileData)
+        // Check for ID mismatch
+        if (profileData.id !== userId) {
+          setError('Profile ID mismatch! Auth user.id does not match profiles.id.')
+          console.error('[Auth] Profile ID mismatch:', {
+            authUserId: userId,
+            profileId: profileData.id,
+          })
+        }
       } else {
+        setError('No profile data found for user. Please contact support.')
         console.warn('[Auth] No profile data found for user:', userId)
         setProfile(null)
       }
     } catch (error) {
+      setError('Error fetching profile. See console for details.')
       console.error('Error fetching profile:', error)
       setProfile(null)
     }
