@@ -17,7 +17,9 @@ export default function DebugPage() {
   }, [])
 
   useEffect(() => {
+    console.log('[Debug] useEffect running, supabase:', !!supabase)
     if (!supabase) {
+      console.log('[Debug] Supabase client creation failed')
       setConnectionTest({
         success: false,
         error: {
@@ -31,34 +33,41 @@ export default function DebugPage() {
       })
       return
     }
+    console.log('[Debug] Calling checkEnvironment')
     checkEnvironment()
   }, [supabase])
 
   const checkEnvironment = async () => {
-    // Check environment variables
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-    setEnvStatus({
-      url: {
-        exists: !!supabaseUrl,
-        value: supabaseUrl ? `${supabaseUrl.substring(0, 30)}...` : 'MISSING',
-        length: supabaseUrl?.length || 0,
-      },
-      key: {
-        exists: !!supabaseKey,
-        value: supabaseKey ? `${supabaseKey.substring(0, 20)}...` : 'MISSING',
-        length: supabaseKey?.length || 0,
-      },
-      nodeEnv: process.env.NODE_ENV,
-      isProduction: process.env.NODE_ENV === 'production',
-    })
-
-    // Test Supabase connection
+    console.log('[Debug] checkEnvironment started')
     try {
+      // Check environment variables
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+      console.log('[Debug] Env vars - URL exists:', !!supabaseUrl, 'Key exists:', !!supabaseKey)
+
+      setEnvStatus({
+        url: {
+          exists: !!supabaseUrl,
+          value: supabaseUrl ? `${supabaseUrl.substring(0, 30)}...` : 'MISSING',
+          length: supabaseUrl?.length || 0,
+        },
+        key: {
+          exists: !!supabaseKey,
+          value: supabaseKey ? `${supabaseKey.substring(0, 20)}...` : 'MISSING',
+          length: supabaseKey?.length || 0,
+        },
+        nodeEnv: process.env.NODE_ENV,
+        isProduction: process.env.NODE_ENV === 'production',
+      })
+
+      // Test Supabase connection
+      console.log('[Debug] Testing Supabase connection...')
       const { data, error } = await supabase
         .from('clients')
         .select('count', { count: 'exact', head: true })
+
+      console.log('[Debug] Connection test result:', { data, error })
 
       setConnectionTest({
         success: !error,
@@ -71,33 +80,37 @@ export default function DebugPage() {
             }
           : null,
       })
-    } catch (err) {
-      setConnectionTest({
-        success: false,
-        error: {
-          message: err.message,
-          stack: err.stack,
-        },
-      })
-    }
 
-    // Test auth
-    try {
+      // Test auth
+      console.log('[Debug] Testing auth...')
       const {
         data: { session },
-        error,
+        error: authError,
       } = await supabase.auth.getSession()
+
+      console.log('[Debug] Auth test result:', { session: !!session, error: authError })
+
       setAuthTest({
-        success: !error,
+        success: !authError,
         hasSession: !!session,
         userId: session?.user?.id,
         userEmail: session?.user?.email,
-        error: error ? error.message : null,
+        error: authError ? authError.message : null,
       })
+
+      console.log('[Debug] checkEnvironment completed successfully')
     } catch (err) {
+      console.error('[Debug] checkEnvironment error:', err)
+      setConnectionTest({
+        success: false,
+        error: {
+          message: err.message || 'Unknown error',
+          stack: err.stack,
+        },
+      })
       setAuthTest({
         success: false,
-        error: err.message,
+        error: err.message || 'Unknown error',
       })
     }
   }

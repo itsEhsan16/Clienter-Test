@@ -130,7 +130,26 @@ export default function DashboardPage() {
     return <DashboardSkeleton />
   }
 
-  if (!user) return null
+  // If no user after loading, show fallback UI
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+        <div className="max-w-xl w-full bg-white rounded-lg shadow-lg p-8 text-center">
+          <h1 className="text-2xl font-bold text-orange-600 mb-4">You are not logged in</h1>
+          <p className="text-gray-700 mb-6">
+            Please{' '}
+            <a href="/login" className="text-blue-600 underline">
+              log in
+            </a>{' '}
+            to view your dashboard.
+          </p>
+          <a href="/login" className="btn-primary">
+            Go to Login
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen">
