@@ -98,11 +98,6 @@ export default function ClientsPage() {
             <p className="text-gray-700">Check your Supabase configuration, RLS policies, and database setup. See console for details.</p>
           </div>
         )}
-          </Link>
-        }
-      />
-
-      <div className="p-6 lg:p-8">
         {/* Filters and Search */}
         <div className="card p-6 mb-6">
           <div className="relative">

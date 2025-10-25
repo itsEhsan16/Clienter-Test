@@ -41,7 +41,6 @@ export default function MeetingsPage() {
           .from('meetings')
           .select(
             `
-            setError(null)
             *,
             client:clients (*),
             project:projects (*)
