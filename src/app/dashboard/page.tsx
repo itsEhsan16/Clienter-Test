@@ -22,11 +22,15 @@ export default function DashboardPage() {
 
   useEffect(() => {
     console.log('[Dashboard] useEffect: authLoading', authLoading, 'user', user)
+    // If auth is still initializing, show loader until it finishes.
     if (authLoading) {
       setIsLoading(true)
       return
     }
+
+    // If auth finished but there's no user, stop loading (prevents infinite skeleton)
     if (!user) {
+      console.log('[Dashboard] No user found, stopping loading.')
       setIsLoading(false)
       return
     }
@@ -61,38 +65,42 @@ export default function DashboardPage() {
               .eq('user_id', user.id),
           ])
 
-        // Enhanced error handling for deployment
-        let errorMsg = ''
+        // Log fetch results for debugging
+        console.log('[Dashboard] Clients fetch result:', clientsResult)
+        console.log('[Dashboard] Reminders fetch result:', remindersResult)
+        console.log('[Dashboard] Clients count fetch result:', clientsCountResult)
+        console.log('[Dashboard] Meetings count fetch result:', meetingsCountResult)
+
+        // Check for errors in any result
         if (clientsResult.error) {
-          errorMsg += 'Clients fetch error: ' + clientsResult.error.message + '\n'
+          setError('Clients fetch error: ' + clientsResult.error.message)
+          console.error('[Dashboard] Clients fetch error:', clientsResult.error)
         }
         if (remindersResult.error) {
-          errorMsg += 'Reminders fetch error: ' + remindersResult.error.message + '\n'
+          setError('Reminders fetch error: ' + remindersResult.error.message)
+          console.error('[Dashboard] Reminders fetch error:', remindersResult.error)
         }
         if (clientsCountResult.error) {
-          errorMsg += 'Clients count fetch error: ' + clientsCountResult.error.message + '\n'
+          setError('Clients count fetch error: ' + clientsCountResult.error.message)
+          console.error('[Dashboard] Clients count fetch error:', clientsCountResult.error)
         }
         if (meetingsCountResult.error) {
-          errorMsg += 'Meetings count fetch error: ' + meetingsCountResult.error.message + '\n'
-        }
-        if (errorMsg) {
-          setError(errorMsg)
-          setIsLoading(false)
-          return
+          setError('Meetings count fetch error: ' + meetingsCountResult.error.message)
+          console.error('[Dashboard] Meetings count fetch error:', meetingsCountResult.error)
         }
 
-        // If all data is empty, show a clear error for deployment debugging
-        if (
-          (!clientsResult.data || clientsResult.data.length === 0) &&
-          (!remindersResult.data || remindersResult.data.length === 0) &&
-          (!clientsCountResult.count || clientsCountResult.count === 0) &&
-          (!meetingsCountResult.count || meetingsCountResult.count === 0)
-        ) {
-          setError(
-            'No dashboard data returned. This may indicate a Row Level Security (RLS) or schema issue in deployment. Please check your Supabase policies and database schema.'
-          )
-          setIsLoading(false)
-          return
+        // Log if no data returned
+        if (!clientsResult.data || clientsResult.data.length === 0) {
+          console.warn('[Dashboard] No clients data fetched.')
+        }
+        if (!remindersResult.data || remindersResult.data.length === 0) {
+          console.warn('[Dashboard] No reminders data fetched.')
+        }
+        if (!clientsCountResult.count) {
+          console.warn('[Dashboard] No clients count fetched.')
+        }
+        if (!meetingsCountResult.count) {
+          console.warn('[Dashboard] No meetings count fetched.')
         }
 
         setRecentClients(clientsResult.data || [])
