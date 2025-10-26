@@ -35,7 +35,13 @@ export default function DashboardPage() {
       return
     }
 
+
+    console.log('before fetchDashboardData');
+
     const fetchDashboardData = async () => {
+
+      console.log('yooooh [Dashboard] Fetching dashboard data for user:', user.id);
+
       setIsLoading(true)
       setError(null)
       try {
@@ -121,6 +127,9 @@ export default function DashboardPage() {
         setIsLoading(false)
       }
     }
+
+    console.log('after fetchDashboardData');
+
 
     fetchDashboardData()
   }, [user, authLoading, supabase])
