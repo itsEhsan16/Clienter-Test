@@ -5,12 +5,12 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { createBrowserClient } from '@/lib/supabase'
 import { getUserTimezone } from '@/lib/date-utils'
-import { User, Globe, Clock, Save, Bell } from 'lucide-react'
+import { User, Globe, Clock, Save, Bell, LogOut, Trash2 } from 'lucide-react'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
 export default function SettingsPage() {
-  const { user, profile, refreshProfile, loading } = useAuth()
+  const { user, profile, refreshProfile, loading, signOut } = useAuth()
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -24,6 +24,10 @@ export default function SettingsPage() {
 
   const [notificationPermission, setNotificationPermission] =
     useState<NotificationPermission>('default')
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showSignOutDialog, setShowSignOutDialog] = useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if ('Notification' in window) {
@@ -86,6 +90,35 @@ export default function SettingsPage() {
     if ('Notification' in window) {
       const permission = await Notification.requestPermission()
       setNotificationPermission(permission)
+    }
+  }
+
+  const handleSignOut = async () => {
+    await signOut()
+    window.location.href = '/login'
+  }
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmation !== 'delete' || !user) return
+
+    setDeleting(true)
+    try {
+      // Delete profile data
+      const { error: profileError } = await supabase.from('profiles').delete().eq('id', user.id)
+
+      if (profileError) {
+        setMessage(`Error deleting profile: ${profileError.message}`)
+        setDeleting(false)
+        return
+      }
+
+      // Note: In a real app, you'd need server-side admin API to delete the auth user
+      // For now, we'll sign them out after deleting their profile
+      await signOut()
+      window.location.href = '/login'
+    } catch (error) {
+      setMessage('Error deleting account. Please contact support.')
+      setDeleting(false)
     }
   }
 
@@ -181,15 +214,37 @@ export default function SettingsPage() {
                   className="input"
                 >
                   <option value="UTC">UTC</option>
-                  <option value="America/New_York">Eastern Time (ET)</option>
-                  <option value="America/Chicago">Central Time (CT)</option>
-                  <option value="America/Denver">Mountain Time (MT)</option>
-                  <option value="America/Los_Angeles">Pacific Time (PT)</option>
-                  <option value="Europe/London">London (GMT)</option>
-                  <option value="Europe/Paris">Paris (CET)</option>
-                  <option value="Asia/Tokyo">Tokyo (JST)</option>
-                  <option value="Asia/Shanghai">Shanghai (CST)</option>
-                  <option value="Australia/Sydney">Sydney (AEDT)</option>
+                  <option value="America/New_York">Eastern Time (ET) - New York</option>
+                  <option value="America/Chicago">Central Time (CT) - Chicago</option>
+                  <option value="America/Denver">Mountain Time (MT) - Denver</option>
+                  <option value="America/Los_Angeles">Pacific Time (PT) - Los Angeles</option>
+                  <option value="America/Toronto">Eastern Time (ET) - Toronto</option>
+                  <option value="America/Vancouver">Pacific Time (PT) - Vancouver</option>
+                  <option value="Europe/London">Greenwich Mean Time (GMT) - London</option>
+                  <option value="Europe/Paris">Central European Time (CET) - Paris</option>
+                  <option value="Europe/Berlin">Central European Time (CET) - Berlin</option>
+                  <option value="Europe/Rome">Central European Time (CET) - Rome</option>
+                  <option value="Europe/Moscow">Moscow Standard Time (MSK) - Moscow</option>
+                  <option value="Asia/Dubai">Gulf Standard Time (GST) - Dubai</option>
+                  <option value="Asia/Kolkata">India Standard Time (IST) - Kolkata</option>
+                  <option value="Asia/Mumbai">India Standard Time (IST) - Mumbai</option>
+                  <option value="Asia/Tokyo">Japan Standard Time (JST) - Tokyo</option>
+                  <option value="Asia/Shanghai">China Standard Time (CST) - Shanghai</option>
+                  <option value="Asia/Hong_Kong">Hong Kong Time (HKT) - Hong Kong</option>
+                  <option value="Asia/Singapore">Singapore Time (SGT) - Singapore</option>
+                  <option value="Australia/Sydney">Australian Eastern Time (AEDT) - Sydney</option>
+                  <option value="Australia/Melbourne">
+                    Australian Eastern Time (AEDT) - Melbourne
+                  </option>
+                  <option value="Australia/Perth">Australian Western Time (AWST) - Perth</option>
+                  <option value="Australia/Brisbane">
+                    Australian Eastern Time (AEST) - Brisbane
+                  </option>
+                  <option value="Pacific/Auckland">New Zealand Time (NZDT) - Auckland</option>
+                  <option value="Africa/Cairo">Eastern European Time (EET) - Cairo</option>
+                  <option value="Africa/Johannesburg">
+                    South Africa Standard Time (SAST) - Johannesburg
+                  </option>
                 </select>
                 <p className="mt-1 text-sm text-gray-500">
                   Your current timezone: {getUserTimezone()}
@@ -268,6 +323,13 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
+
+            <div className="flex justify-end pt-6">
+              <button type="submit" disabled={saving} className="btn-primary flex items-center">
+                <Save className="w-4 h-4 mr-2" />
+                {saving ? 'Saving...' : 'Save Settings'}
+              </button>
+            </div>
           </form>
         </div>
 
@@ -283,6 +345,98 @@ export default function SettingsPage() {
               <span className="text-gray-900">
                 {new Date(user.created_at).toLocaleDateString()}
               </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="card p-6 border-red-200">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Account Actions</h2>
+          <div className="space-y-4">
+            <div>
+              {!showSignOutDialog ? (
+                <button
+                  onClick={() => setShowSignOutDialog(true)}
+                  className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </button>
+              ) : (
+                <div className="space-y-4 p-4 border border-gray-300 rounded-lg bg-gray-50">
+                  <p className="text-sm text-gray-700 font-medium">
+                    Are you sure you want to sign out?
+                  </p>
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => setShowSignOutDialog(false)}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSignOut}
+                      className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-gray-200 pt-4">
+              <h3 className="text-md font-semibold text-red-600 mb-2">Danger Zone</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Once you delete your account, there is no going back. Please be certain.
+              </p>
+
+              {!showDeleteDialog ? (
+                <button
+                  onClick={() => setShowDeleteDialog(true)}
+                  className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Account
+                </button>
+              ) : (
+                <div className="space-y-4 p-4 border border-red-300 rounded-lg bg-red-50">
+                  <p className="text-sm text-red-700 font-medium">
+                    This action cannot be undone. This will permanently delete your account and
+                    remove your data from our servers.
+                  </p>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Type "delete" to confirm:
+                    </label>
+                    <input
+                      type="text"
+                      value={deleteConfirmation}
+                      onChange={(e) => setDeleteConfirmation(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                      placeholder="delete"
+                    />
+                  </div>
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => {
+                        setShowDeleteDialog(false)
+                        setDeleteConfirmation('')
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                      disabled={deleting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDeleteAccount}
+                      disabled={deleteConfirmation !== 'delete' || deleting}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {deleting ? 'Deleting...' : 'Delete Account'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

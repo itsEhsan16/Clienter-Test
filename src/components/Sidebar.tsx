@@ -9,7 +9,6 @@ import {
   Users,
   Calendar,
   Settings,
-  LogOut,
   Menu,
   X,
   ChevronLeft,
@@ -31,11 +30,6 @@ export function Sidebar() {
     { href: '/meetings', label: 'Meetings', icon: Calendar },
     { href: '/settings', label: 'Settings', icon: Settings },
   ]
-
-  const handleSignOut = async () => {
-    await signOut()
-    window.location.href = '/login'
-  }
 
   return (
     <>
@@ -162,16 +156,6 @@ export function Sidebar() {
             >
               <Bell className={`w-5 h-5 ${isCollapsed ? '' : 'mr-3'}`} />
               {!isCollapsed && <span className="text-sm">Notifications</span>}
-            </button>
-            <button
-              onClick={handleSignOut}
-              className={`
-                w-full flex items-center px-3 py-2 rounded-lg text-gray-300 hover:bg-zinc-800 hover:text-red-400 transition-colors
-                ${isCollapsed ? 'justify-center' : ''}
-              `}
-            >
-              <LogOut className={`w-5 h-5 ${isCollapsed ? '' : 'mr-3'}`} />
-              {!isCollapsed && <span className="text-sm">Sign Out</span>}
             </button>
           </div>
         </div>
