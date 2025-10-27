@@ -13,22 +13,10 @@ export interface Client {
   user_id: string
   name: string
   phone: string | null
-  company?: string | null
-  tags?: string[]
   project_description: string | null
   budget: number | null
-  status: 'general' | 'important' | 'working' | 'finished'
-  created_at: string
-  updated_at: string
-}
-
-export interface Project {
-  id: string
-  client_id: string
-  user_id: string
-  title: string
-  description: string | null
-  budget: number | null
+  advance_paid: number | null
+  total_amount: number | null
   status: 'prospect' | 'active' | 'completed'
   created_at: string
   updated_at: string
@@ -38,7 +26,6 @@ export interface Meeting {
   id: string
   user_id: string
   client_id: string | null
-  project_id: string | null
   title: string
   description: string | null
   meeting_time: string
@@ -59,13 +46,12 @@ export interface Reminder {
   created_at: string
 }
 
-export interface ClientWithProjects extends Client {
-  projects?: Project[]
+export interface ClientWithMeetings extends Client {
+  meetings?: Meeting[]
 }
 
 export interface MeetingWithDetails extends Meeting {
   client?: Client
-  project?: Project
 }
 
 export interface ReminderWithMeeting extends Reminder {

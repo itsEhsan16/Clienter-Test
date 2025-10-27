@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { Navigation } from '@/components/Navigation'
-import { Client, Project, Meeting } from '@/types/database'
+import { Client, Meeting } from '@/types/database'
 import {
   formatCurrency,
   getStatusColor,
@@ -22,15 +22,15 @@ export default function ClientDetailPage() {
   const params = useParams()
   const clientId = params?.id as string
   const [client, setClient] = useState<Client | null>(null)
-  const [projects, setProjects] = useState<Project[]>([])
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState({
     name: '',
     phone: '',
     project_description: '',
-    budget: '',
-    status: 'important' as 'general' | 'important' | 'working' | 'finished',
+    total_amount: '',
+    advance_paid: '',
+    status: 'prospect' as 'prospect' | 'active' | 'completed',
   })
 
   useEffect(() => {
@@ -57,23 +57,13 @@ export default function ClientDetailPage() {
           name: clientData.name,
           phone: clientData.phone || '',
           project_description: clientData.project_description || '',
-          budget: clientData.budget ? clientData.budget.toString() : '',
+          total_amount: clientData.total_amount ? clientData.total_amount.toString() : '',
+          advance_paid: clientData.advance_paid ? clientData.advance_paid.toString() : '',
           status: clientData.status,
         })
       } else {
         router.push('/clients')
         return
-      }
-
-      // Fetch projects
-      const { data: projectsData } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('client_id', clientId)
-        .order('created_at', { ascending: false })
-
-      if (projectsData) {
-        setProjects(projectsData)
       }
 
       // Fetch meetings
@@ -101,7 +91,8 @@ export default function ClientDetailPage() {
         name: editData.name,
         phone: editData.phone || null,
         project_description: editData.project_description || null,
-        budget: editData.budget ? parseFloat(editData.budget) : null,
+        total_amount: editData.total_amount ? parseFloat(editData.total_amount) : null,
+        advance_paid: editData.advance_paid ? parseFloat(editData.advance_paid) : 0,
         status: editData.status,
         updated_at: new Date().toISOString(),
       })
@@ -113,7 +104,8 @@ export default function ClientDetailPage() {
         name: editData.name,
         phone: editData.phone || null,
         project_description: editData.project_description || null,
-        budget: editData.budget ? parseFloat(editData.budget) : null,
+        total_amount: editData.total_amount ? parseFloat(editData.total_amount) : null,
+        advance_paid: editData.advance_paid ? parseFloat(editData.advance_paid) : 0,
         status: editData.status,
       })
       setIsEditing(false)
@@ -124,7 +116,7 @@ export default function ClientDetailPage() {
     if (!client) return
     if (
       !confirm(
-        `Are you sure you want to delete ${client.name}? This will also delete all associated projects and meetings.`
+        `Are you sure you want to delete ${client.name}? This will also delete all associated meetings.`
       )
     ) {
       return
@@ -146,7 +138,7 @@ export default function ClientDetailPage() {
   }
 
   const upcomingMeetings = meetings.filter((m) => new Date(m.meeting_time) > new Date())
-  const totalBudget = projects.reduce((sum, p) => sum + (p.budget || 0), 0)
+  const balance = (client?.total_amount || 0) - (client?.advance_paid || 0)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -199,17 +191,29 @@ export default function ClientDetailPage() {
                   placeholder="Brief description of the project or service..."
                 />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="label">Budget</label>
+                  <label className="label">Total Amount</label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
-                    value={editData.budget}
-                    onChange={(e) => setEditData({ ...editData, budget: e.target.value })}
+                    value={editData.total_amount}
+                    onChange={(e) => setEditData({ ...editData, total_amount: e.target.value })}
                     className="input"
                     placeholder="5000.00"
+                  />
+                </div>
+                <div>
+                  <label className="label">Advance Paid</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editData.advance_paid}
+                    onChange={(e) => setEditData({ ...editData, advance_paid: e.target.value })}
+                    className="input"
+                    placeholder="1000.00"
                   />
                 </div>
                 <div>
@@ -219,15 +223,14 @@ export default function ClientDetailPage() {
                     onChange={(e) =>
                       setEditData({
                         ...editData,
-                        status: e.target.value as 'general' | 'important' | 'working' | 'finished',
+                        status: e.target.value as 'prospect' | 'active' | 'completed',
                       })
                     }
                     className="input"
                   >
-                    <option value="general">General</option>
-                    <option value="important">Important</option>
-                    <option value="working">Working</option>
-                    <option value="finished">Finished</option>
+                    <option value="prospect">Prospect</option>
+                    <option value="active">Active</option>
+                    <option value="completed">Completed</option>
                   </select>
                 </div>
               </div>
@@ -254,10 +257,21 @@ export default function ClientDetailPage() {
                       {getClientStatusLabel(client.status)}
                     </span>
                   </div>
-                  {client.budget && (
+                  {client.total_amount && (
                     <p className="text-lg text-gray-600 mt-1 flex items-center">
                       <DollarSign className="w-4 h-4 mr-2" />
-                      Budget: {formatCurrency(client.budget)}
+                      Total: {formatCurrency(client.total_amount)}
+                    </p>
+                  )}
+                  {client.advance_paid && client.advance_paid > 0 && (
+                    <p className="text-lg text-green-600 mt-1 flex items-center">
+                      Paid: {formatCurrency(client.advance_paid)}
+                    </p>
+                  )}
+                  {client.total_amount && client.advance_paid !== undefined && (
+                    <p className="text-lg text-orange-600 mt-1 flex items-center">
+                      Balance:{' '}
+                      {formatCurrency((client.total_amount || 0) - (client.advance_paid || 0))}
                     </p>
                   )}
                 </div>
@@ -305,66 +319,24 @@ export default function ClientDetailPage() {
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <div className="card p-6">
-            <div className="text-sm font-medium text-gray-600 mb-1">Total Projects</div>
-            <div className="text-3xl font-bold text-gray-900">{projects.length}</div>
+            <div className="text-sm font-medium text-gray-600 mb-1">Total Amount</div>
+            <div className="text-3xl font-bold text-gray-900">
+              {formatCurrency(client.total_amount || 0)}
+            </div>
           </div>
           <div className="card p-6">
-            <div className="text-sm font-medium text-gray-600 mb-1">Total Budget</div>
-            <div className="text-3xl font-bold text-gray-900">{formatCurrency(totalBudget)}</div>
+            <div className="text-sm font-medium text-gray-600 mb-1">Advance Paid</div>
+            <div className="text-3xl font-bold text-green-600">
+              {formatCurrency(client.advance_paid || 0)}
+            </div>
           </div>
           <div className="card p-6">
-            <div className="text-sm font-medium text-gray-600 mb-1">Upcoming Meetings</div>
-            <div className="text-3xl font-bold text-gray-900">{upcomingMeetings.length}</div>
+            <div className="text-sm font-medium text-gray-600 mb-1">Balance Due</div>
+            <div className="text-3xl font-bold text-orange-600">{formatCurrency(balance)}</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Projects */}
-          <div className="card">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">Projects</h2>
-                <button className="text-sm text-primary-600 hover:text-primary-700 flex items-center">
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add Project
-                </button>
-              </div>
-            </div>
-            <div className="p-6">
-              {projects.length === 0 ? (
-                <p className="text-gray-500 text-center py-4">No projects yet</p>
-              ) : (
-                <ul className="space-y-4">
-                  {projects.map((project) => (
-                    <li key={project.id} className="border-l-4 border-primary-500 pl-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{project.title}</h3>
-                          {project.description && (
-                            <p className="text-sm text-gray-600 mt-1">{project.description}</p>
-                          )}
-                          {project.budget && (
-                            <p className="text-sm text-gray-500 mt-1 flex items-center">
-                              <DollarSign className="w-3 h-3 mr-1" />
-                              {formatCurrency(project.budget)}
-                            </p>
-                          )}
-                        </div>
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(
-                            project.status
-                          )}`}
-                        >
-                          {getStatusLabel(project.status)}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-
+        <div className="grid grid-cols-1 gap-6">
           {/* Meetings */}
           <div className="card">
             <div className="px-6 py-4 border-b border-gray-200">
@@ -384,7 +356,7 @@ export default function ClientDetailPage() {
                 <p className="text-gray-500 text-center py-4">No meetings yet</p>
               ) : (
                 <ul className="space-y-4">
-                  {meetings.slice(0, 5).map((meeting) => (
+                  {meetings.slice(0, 10).map((meeting) => (
                     <li key={meeting.id} className="flex items-start space-x-3">
                       <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
                       <div className="flex-1 min-w-0">

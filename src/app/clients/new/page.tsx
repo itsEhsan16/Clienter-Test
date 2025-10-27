@@ -18,8 +18,9 @@ export default function NewClientPage() {
     name: '',
     phone: '',
     project_description: '',
-    budget: '',
-    status: 'important' as 'general' | 'important' | 'working' | 'finished',
+    total_amount: '',
+    advance_paid: '',
+    status: 'prospect' as 'prospect' | 'active' | 'completed',
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,7 +40,8 @@ export default function NewClientPage() {
         name: formData.name.trim(),
         phone: formData.phone.trim() || null,
         project_description: formData.project_description.trim() || null,
-        budget: formData.budget ? parseFloat(formData.budget) : null,
+        total_amount: formData.total_amount ? parseFloat(formData.total_amount) : null,
+        advance_paid: formData.advance_paid ? parseFloat(formData.advance_paid) : 0,
         status: formData.status,
       }
 
@@ -82,7 +84,7 @@ export default function NewClientPage() {
     <div className="min-h-screen">
       <TopBar
         title="Add New Client"
-        description="Create a new client profile to start managing their projects"
+        description="Create a new client profile"
         actions={
           <Link href="/clients" className="btn-secondary">
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -183,21 +185,39 @@ export default function NewClientPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <label htmlFor="budget" className="label">
-                  Budget
+                <label htmlFor="total_amount" className="label">
+                  Total Amount
                 </label>
                 <input
                   type="number"
-                  id="budget"
-                  name="budget"
+                  id="total_amount"
+                  name="total_amount"
                   step="0.01"
                   min="0"
-                  value={formData.budget}
+                  value={formData.total_amount}
                   onChange={handleChange}
                   className="input"
                   placeholder="5000.00"
+                  disabled={loading}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="advance_paid" className="label">
+                  Advance Paid
+                </label>
+                <input
+                  type="number"
+                  id="advance_paid"
+                  name="advance_paid"
+                  step="0.01"
+                  min="0"
+                  value={formData.advance_paid}
+                  onChange={handleChange}
+                  className="input"
+                  placeholder="1000.00"
                   disabled={loading}
                 />
               </div>
@@ -214,10 +234,9 @@ export default function NewClientPage() {
                   className="input"
                   disabled={loading}
                 >
-                  <option value="general">General</option>
-                  <option value="important">Important</option>
-                  <option value="working">Working</option>
-                  <option value="finished">Finished</option>
+                  <option value="prospect">Prospect</option>
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
                 </select>
               </div>
             </div>

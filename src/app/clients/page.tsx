@@ -14,6 +14,21 @@ import {
 } from '@/lib/utils'
 import { Plus, Search, Download, Users as UsersIcon, X, Phone } from 'lucide-react'
 import Link from 'next/link'
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { KanbanColumn } from '@/components/KanbanColumn'
+import { KanbanCard } from '@/components/KanbanCard'
+
+const STATUSES = ['prospect', 'active', 'completed'] as const
 
 export default function ClientsPage() {
   const { user, loading: authLoading, supabase } = useAuth()
@@ -22,6 +37,15 @@ export default function ClientsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeId, setActiveId] = useState<string | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  )
 
   useEffect(() => {
     if (!user || authLoading) return
@@ -61,6 +85,60 @@ export default function ClientsPage() {
     setFilteredClients(filtered)
   }, [searchTerm, clients])
 
+  const clientsByStatus = useMemo(() => {
+    const grouped: Record<string, Client[]> = {
+      prospect: [],
+      active: [],
+      completed: [],
+    }
+    filteredClients.forEach((client) => {
+      if (grouped[client.status]) {
+        grouped[client.status].push(client)
+      }
+    })
+    return grouped
+  }, [filteredClients])
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string)
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveId(null)
+
+    if (!over) return
+
+    const activeId = active.id as string
+    const overId = over.id as string
+
+    const activeClient = clients.find((c) => c.id === activeId)
+    if (!activeClient) return
+
+    // If dropped on a column
+    if (STATUSES.includes(overId as any)) {
+      const newStatus = overId as Client['status']
+      if (newStatus === activeClient.status) return
+
+      // Update local state
+      setClients((prev) => prev.map((c) => (c.id === activeId ? { ...c, status: newStatus } : c)))
+
+      // Update database
+      const { error } = await supabase
+        .from('clients')
+        .update({ status: newStatus })
+        .eq('id', activeId)
+
+      if (error) {
+        console.error('Error updating client status:', error)
+        // Revert on error
+        setClients((prev) =>
+          prev.map((c) => (c.id === activeId ? { ...c, status: activeClient.status } : c))
+        )
+      }
+    }
+  }
+
   const handleExportCSV = () => {
     exportToCSV(filteredClients, `clients-${new Date().toISOString().split('T')[0]}`)
   }
@@ -76,11 +154,13 @@ export default function ClientsPage() {
 
   if (!user) return null
 
+  const activeClient = activeId ? clients.find((c) => c.id === activeId) : null
+
   return (
     <div className="min-h-screen">
       <TopBar
         title="Clients"
-        description="Manage your client relationships and projects"
+        description="Manage your client relationships"
         actions={
           <Link href="/clients/new" className="btn-primary">
             <Plus className="w-4 h-4 mr-2" />
@@ -101,9 +181,29 @@ export default function ClientsPage() {
             </p>
           </div>
         )}
+
         {/* Filters and Search */}
         <div className="card p-6 mb-6">
-          <div className="relative">{/* ...existing code... */}</div>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search clients..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Export Options */}
@@ -120,9 +220,28 @@ export default function ClientsPage() {
           </div>
         )}
 
-        {/* Clients Grid */}
-        {filteredClients.length === 0 ? (
-          <div className="card p-12 text-center">
+        {/* Kanban Board */}
+        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {STATUSES.map((status) => (
+              <KanbanColumn
+                key={status}
+                id={status}
+                title={getClientStatusLabel(status)}
+                clients={clientsByStatus[status]}
+                count={clientsByStatus[status].length}
+              />
+            ))}
+          </div>
+
+          <DragOverlay>
+            {activeClient ? <KanbanCard client={activeClient} isDragging /> : null}
+          </DragOverlay>
+        </DndContext>
+
+        {/* Empty State */}
+        {filteredClients.length === 0 && (
+          <div className="card p-12 text-center col-span-full">
             <UsersIcon className="w-16 h-16 mx-auto text-gray-300 mb-4" />
             <h3 className="text-lg font-bold text-gray-900 mb-2">
               {clients.length === 0 ? 'No clients yet' : 'No clients found'}
@@ -138,50 +257,6 @@ export default function ClientsPage() {
                 Add Your First Client
               </Link>
             )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredClients.map((client) => (
-              <Link
-                key={client.id}
-                href={`/clients/${client.id}`}
-                className="card p-6 hover:shadow-lg hover:border-orange-200 transition-all cursor-pointer group"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-bold text-gray-900 truncate group-hover:text-orange-600 transition-colors">
-                      {client.name}
-                    </h3>
-                  </div>
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs font-medium ${getClientStatusColor(
-                      client.status
-                    )}`}
-                  >
-                    {getClientStatusLabel(client.status)}
-                  </span>
-                </div>
-
-                {client.budget && (
-                  <p className="text-sm font-semibold text-gray-700 mb-2">
-                    {formatCurrency(client.budget)}
-                  </p>
-                )}
-
-                {client.project_description && (
-                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                    {client.project_description}
-                  </p>
-                )}
-
-                {client.phone && (
-                  <p className="text-sm text-gray-600 mt-4 flex items-center">
-                    <Phone className="w-4 h-4 mr-2" />
-                    {client.phone}
-                  </p>
-                )}
-              </Link>
-            ))}
           </div>
         )}
       </div>

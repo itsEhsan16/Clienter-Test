@@ -1,4 +1,4 @@
-import { Client, Project, Meeting } from '@/types/database'
+import { Client, Meeting } from '@/types/database'
 
 export const exportToJSON = (data: any, filename: string) => {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -51,13 +51,11 @@ export const getStatusColor = (status: string): string => {
 
 export const getClientStatusColor = (status: string): string => {
   switch (status) {
-    case 'general':
-      return 'bg-gray-100 text-gray-800'
-    case 'important':
-      return 'bg-orange-100 text-orange-800'
-    case 'working':
+    case 'prospect':
+      return 'bg-yellow-100 text-yellow-800'
+    case 'active':
       return 'bg-blue-100 text-blue-800'
-    case 'finished':
+    case 'completed':
       return 'bg-green-100 text-green-800'
     default:
       return 'bg-gray-100 text-gray-800'
@@ -66,14 +64,12 @@ export const getClientStatusColor = (status: string): string => {
 
 export const getClientStatusLabel = (status: string): string => {
   switch (status) {
-    case 'general':
-      return 'General'
-    case 'important':
-      return 'Important'
-    case 'working':
-      return 'Working'
-    case 'finished':
-      return 'Finished'
+    case 'prospect':
+      return 'Prospect'
+    case 'active':
+      return 'Active'
+    case 'completed':
+      return 'Completed'
     default:
       if (!status) return 'Unknown'
       return status.charAt(0).toUpperCase() + status.slice(1)

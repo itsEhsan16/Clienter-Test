@@ -28,8 +28,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
           *,
           meeting:meetings (
             *,
-            client:clients (*),
-            project:projects (*)
+            client:clients (*)
           )
         `
         )

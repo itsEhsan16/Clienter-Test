@@ -17,19 +17,8 @@ CREATE TABLE clients (
   phone TEXT,
   project_description TEXT,
   budget DECIMAL(10, 2),
-  status TEXT DEFAULT 'important' CHECK (status IN ('general', 'important', 'working', 'finished')),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
-);
-
--- Create projects table
-CREATE TABLE projects (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id UUID REFERENCES clients(id) ON DELETE CASCADE NOT NULL,
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
-  title TEXT NOT NULL,
-  description TEXT,
-  budget DECIMAL(10, 2),
+  advance_paid DECIMAL(10, 2) DEFAULT 0,
+  total_amount DECIMAL(10, 2),
   status TEXT DEFAULT 'prospect' CHECK (status IN ('prospect', 'active', 'completed')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
@@ -40,7 +29,6 @@ CREATE TABLE meetings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
-  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   description TEXT,
   meeting_time TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -157,11 +145,9 @@ CREATE POLICY "Users can delete own reminders"
 
 -- Indexes for performance
 CREATE INDEX clients_user_id_idx ON clients(user_id);
-CREATE INDEX projects_client_id_idx ON projects(client_id);
-CREATE INDEX projects_user_id_idx ON projects(user_id);
+CREATE INDEX clients_status_idx ON clients(status);
 CREATE INDEX meetings_user_id_idx ON meetings(user_id);
 CREATE INDEX meetings_client_id_idx ON meetings(client_id);
-CREATE INDEX meetings_project_id_idx ON meetings(project_id);
 CREATE INDEX meetings_meeting_time_idx ON meetings(meeting_time);
 CREATE INDEX reminders_user_id_idx ON reminders(user_id);
 CREATE INDEX reminders_meeting_id_idx ON reminders(meeting_id);

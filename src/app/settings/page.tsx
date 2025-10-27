@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { createBrowserClient } from '@/lib/supabase'
 import { getUserTimezone } from '@/lib/date-utils'
-import { User, Globe, Clock, Save } from 'lucide-react'
+import { User, Globe, Clock, Save, Bell } from 'lucide-react'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
@@ -21,6 +21,15 @@ export default function SettingsPage() {
     timezone: 'UTC',
     default_reminder_minutes: 15,
   })
+
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermission>('default')
+
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission)
+    }
+  }, [])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -71,6 +80,13 @@ export default function SettingsPage() {
       ...formData,
       [e.target.name]: value,
     })
+  }
+
+  const handleRequestNotifications = async () => {
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission()
+      setNotificationPermission(permission)
+    }
   }
 
   if (loading) {
@@ -212,11 +228,45 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex justify-end">
-              <button type="submit" disabled={saving} className="btn-primary">
-                <Save className="w-4 h-4 mr-2" />
-                {saving ? 'Saving...' : 'Save Settings'}
-              </button>
+            <div className="border-t border-gray-200 pt-6">
+              <h3 className="text-md font-semibold text-gray-900 mb-4 flex items-center">
+                <Bell className="w-5 h-5 mr-2" />
+                Notifications
+              </h3>
+
+              <div>
+                <label className="label">Desktop Notifications</label>
+                <div className="flex items-center space-x-4">
+                  <span
+                    className={`text-sm ${
+                      notificationPermission === 'granted'
+                        ? 'text-green-600'
+                        : notificationPermission === 'denied'
+                        ? 'text-red-600'
+                        : 'text-gray-600'
+                    }`}
+                  >
+                    {notificationPermission === 'granted'
+                      ? 'Enabled'
+                      : notificationPermission === 'denied'
+                      ? 'Blocked by browser'
+                      : 'Not enabled'}
+                  </span>
+                  {notificationPermission !== 'granted' && (
+                    <button
+                      type="button"
+                      onClick={handleRequestNotifications}
+                      className="btn-secondary text-sm"
+                    >
+                      Enable Notifications
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-sm text-gray-500">
+                  Get desktop notifications for meeting reminders even when the browser is not
+                  focused.
+                </p>
+              </div>
             </div>
           </form>
         </div>

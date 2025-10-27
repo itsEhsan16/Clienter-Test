@@ -41,8 +41,7 @@ export default function MeetingsPage() {
           .select(
             `
             *,
-            client:clients (*),
-            project:projects (*)
+            client:clients (*)
           `
           )
           .eq('user_id', user.id)

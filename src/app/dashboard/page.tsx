@@ -14,7 +14,13 @@ export default function DashboardPage() {
   const { user, profile, loading: authLoading } = useAuth()
   const [recentClients, setRecentClients] = useState<Client[]>([])
   const [upcomingReminders, setUpcomingReminders] = useState<ReminderWithMeeting[]>([])
-  const [stats, setStats] = useState({ clients: 0, meetings: 0, projects: 0 })
+  const [stats, setStats] = useState({
+    clients: 0,
+    meetings: 0,
+    totalRevenue: 0,
+    totalPaid: 0,
+    totalDue: 0,
+  })
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -67,17 +73,23 @@ export default function DashboardPage() {
           const response = await fetch('https://zviakkdqtmhqfkxjjqvn.supabase.co/rest/v1/', {
             method: 'HEAD',
             headers: {
-              'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+              apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
             },
           })
-          console.log('[Dashboard] Basic network test result:', response.status, response.statusText)
+          console.log(
+            '[Dashboard] Basic network test result:',
+            response.status,
+            response.statusText
+          )
           if (!response.ok) {
             setError(`Network connectivity issue: ${response.status} ${response.statusText}`)
             return
           }
         } catch (networkError: any) {
           console.error('[Dashboard] Basic network test failed:', networkError)
-          setError('Network connectivity error: ' + (networkError?.message || 'Cannot reach Supabase'))
+          setError(
+            'Network connectivity error: ' + (networkError?.message || 'Cannot reach Supabase')
+          )
           return
         }
 
@@ -88,7 +100,10 @@ export default function DashboardPage() {
             .from('profiles')
             .select('id')
             .limit(1)
-          console.log('[Dashboard] Supabase connection test result:', { data: testData, error: testError })
+          console.log('[Dashboard] Supabase connection test result:', {
+            data: testData,
+            error: testError,
+          })
           if (testError) {
             console.error('[Dashboard] Supabase connection test failed:', testError)
             setError('Supabase connection failed: ' + testError.message)
@@ -112,7 +127,7 @@ export default function DashboardPage() {
         console.log('[Dashboard] Fetching reminders...')
         const remindersResult = await supabase
           .from('reminders')
-          .select(`*,meeting:meetings (*,client:clients (*),project:projects (*))`)
+          .select(`*,meeting:meetings (*,client:clients (*))`)
           .eq('user_id', user.id)
           .eq('is_dismissed', false)
           .gte('remind_at', new Date().toISOString())
@@ -126,6 +141,13 @@ export default function DashboardPage() {
           .select('*', { count: 'exact', head: true })
           .eq('user_id', user.id)
         console.log('[Dashboard] Clients count fetch result:', clientsCountResult)
+
+        console.log('[Dashboard] Fetching all clients for revenue calculation...')
+        const allClientsResult = await supabase
+          .from('clients')
+          .select('total_amount, advance_paid')
+          .eq('user_id', user.id)
+        console.log('[Dashboard] All clients fetch result:', allClientsResult)
 
         console.log('[Dashboard] Fetching meetings count...')
         const meetingsCountResult = await supabase
@@ -166,6 +188,11 @@ export default function DashboardPage() {
           console.error('[Dashboard] Meetings count fetch error:', meetingsCountResult.error)
           return
         }
+        if (allClientsResult.error) {
+          setError('All clients fetch error: ' + allClientsResult.error.message)
+          console.error('[Dashboard] All clients fetch error:', allClientsResult.error)
+          return
+        }
 
         // Log if no data returned
         if (!clientsResult.data || clientsResult.data.length === 0) {
@@ -181,12 +208,20 @@ export default function DashboardPage() {
           console.warn('[Dashboard] No meetings count fetched.')
         }
 
+        // Calculate totals
+        const allClients = allClientsResult.data || []
+        const totalRevenue = allClients.reduce((sum, c) => sum + (c.total_amount || 0), 0)
+        const totalPaid = allClients.reduce((sum, c) => sum + (c.advance_paid || 0), 0)
+        const totalDue = totalRevenue - totalPaid
+
         setRecentClients(clientsResult.data || [])
         setUpcomingReminders(remindersResult.data || [])
         setStats({
           clients: clientsCountResult.count || 0,
           meetings: meetingsCountResult.count || 0,
-          projects: 0,
+          totalRevenue,
+          totalPaid,
+          totalDue,
         })
 
         if ((clientsResult.data || []).length === 0) {
@@ -294,9 +329,11 @@ export default function DashboardPage() {
               <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center group-hover:bg-green-500 transition-colors">
                 <TrendingUp className="w-6 h-6 text-green-600 group-hover:text-white transition-colors" />
               </div>
-              <span className="text-3xl font-bold text-gray-900">{stats.projects}</span>
+              <span className="text-3xl font-bold text-gray-900">
+                ${stats.totalRevenue.toFixed(0)}
+              </span>
             </div>
-            <p className="text-sm font-semibold text-gray-600">Active Projects</p>
+            <p className="text-sm font-semibold text-gray-600">Total Revenue</p>
           </div>
         </div>
 
@@ -390,23 +427,16 @@ export default function DashboardPage() {
                             <p className="text-sm font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">
                               {client.name}
                             </p>
-                            {client.company && (
-                              <p className="text-xs text-gray-500">{client.company}</p>
+                            {client.project_description && (
+                              <p className="text-xs text-gray-500 truncate">
+                                {client.project_description}
+                              </p>
                             )}
                           </div>
                           <p className="text-xs text-gray-400 ml-2">
                             {formatTimeAgo(client.created_at)}
                           </p>
                         </div>
-                        {Array.isArray(client.tags) && client.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {client.tags.slice(0, 3).map((tag) => (
-                              <span key={tag} className="badge-gray">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
                       </Link>
                     </li>
                   ))}

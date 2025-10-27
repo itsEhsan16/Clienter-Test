@@ -15,6 +15,13 @@ export function ReminderEngine() {
     useReminderStore()
   const supabase = createBrowserClient()
 
+  // Request notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [])
+
   // Fetch reminders on mount and set up polling
   useEffect(() => {
     if (!user) return
@@ -27,8 +34,7 @@ export function ReminderEngine() {
           *,
           meeting:meetings (
             *,
-            client:clients (*),
-            project:projects (*)
+            client:clients (*)
           )
         `
         )
@@ -58,6 +64,29 @@ export function ReminderEngine() {
   useEffect(() => {
     activeReminders.forEach((reminder) => {
       const meeting = reminder.meeting
+
+      // Show desktop notification if permission granted
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const notification = new Notification('Meeting Reminder', {
+          body: `${meeting.title}${
+            meeting.client ? ` with ${meeting.client.name}` : ''
+          }\n${formatRelativeTime(meeting.meeting_time)}`,
+          tag: reminder.id, // Prevents duplicate notifications
+        })
+
+        // Handle notification click
+        notification.onclick = () => {
+          if (meeting.meeting_link) {
+            window.open(meeting.meeting_link, '_blank')
+          } else {
+            window.focus()
+          }
+          notification.close()
+        }
+
+        // Auto-close after 10 seconds
+        setTimeout(() => notification.close(), 10000)
+      }
 
       toast.custom(
         (t) => (
