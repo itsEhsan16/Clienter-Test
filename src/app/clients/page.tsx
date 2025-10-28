@@ -247,7 +247,7 @@ export default function ClientsPage() {
                 placeholder="Search clients..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg"
               />
               {searchTerm && (
                 <button
@@ -303,7 +303,11 @@ export default function ClientsPage() {
             <h2 className="text-xl font-bold text-gray-900 mb-4">Completed Clients</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {clientsByStatus.completed.map((client) => (
-                <div key={client.id} className="card p-4">
+                <Link
+                  key={client.id}
+                  href={`/clients/${client.id}`}
+                  className="card p-4 block hover:shadow-md transition-shadow"
+                >
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-gray-900">{client.name}</h3>
                     <span
@@ -328,7 +332,7 @@ export default function ClientsPage() {
                       Budget: {formatCurrency(client.budget, profile?.currency || 'INR')}
                     </p>
                   )}
-                </div>
+                </Link>
               ))}
             </div>
           </div>
