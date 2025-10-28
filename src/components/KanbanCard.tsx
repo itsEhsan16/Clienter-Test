@@ -58,7 +58,7 @@ export function KanbanCard({ client, isDragging, currency = 'USD' }: KanbanCardP
           </p>
         )}
 
-        {client.advance_paid && (
+        {client.advance_paid!=0 && (
           <p className="text-sm text-green-600 mb-2">
             Paid: {formatCurrency(client.advance_paid, currency)}
           </p>

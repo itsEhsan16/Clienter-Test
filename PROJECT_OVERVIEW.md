@@ -27,7 +27,7 @@ A **production-ready SaaS web application** built with modern technologies to he
 ### 📊 Project Tracking
 
 - Link multiple projects to each client
-- Track project status: Prospect → Active → Completed
+- Track project status: Uncertain → Potential → Ongoing → Completed
 - Set budgets and descriptions
 - View total budget across all projects
 - See project history per client

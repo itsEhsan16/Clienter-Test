@@ -28,7 +28,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { KanbanColumn } from '@/components/KanbanColumn'
 import { KanbanCard } from '@/components/KanbanCard'
 
-const STATUSES = ['prospect', 'active', 'completed'] as const
+const STATUSES = ['ongoing', 'potential', 'uncertain'] as const
 
 export default function ClientsPage() {
   const { user, profile, loading: authLoading, supabase } = useAuth()
@@ -87,8 +87,9 @@ export default function ClientsPage() {
 
   const clientsByStatus = useMemo(() => {
     const grouped: Record<string, Client[]> = {
-      prospect: [],
-      active: [],
+      uncertain: [],
+      potential: [],
+      ongoing: [],
       completed: [],
     }
     filteredClients.forEach((client) => {
@@ -241,6 +242,43 @@ export default function ClientsPage() {
             ) : null}
           </DragOverlay>
         </DndContext>
+
+        {/* Completed Clients Section */}
+        {clientsByStatus.completed.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Completed Clients</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {clientsByStatus.completed.map((client) => (
+                <div key={client.id} className="card p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-gray-900">{client.name}</h3>
+                    <span
+                      className={`px-2 py-1 text-xs rounded-full ${getClientStatusColor(
+                        client.status
+                      )}`}
+                    >
+                      {getClientStatusLabel(client.status)}
+                    </span>
+                  </div>
+                  {client.phone && (
+                    <p className="text-sm text-gray-600 mb-2">
+                      <Phone className="w-4 h-4 inline mr-1" />
+                      {client.phone}
+                    </p>
+                  )}
+                  {client.project_description && (
+                    <p className="text-sm text-gray-600 mb-2">{client.project_description}</p>
+                  )}
+                  {client.budget && (
+                    <p className="text-sm font-medium text-gray-900">
+                      Budget: {formatCurrency(client.budget, profile?.currency || 'INR')}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Empty State */}
         {filteredClients.length === 0 && (

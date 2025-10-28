@@ -38,9 +38,11 @@ const downloadBlob = (blob: Blob, filename: string) => {
 
 export const getStatusColor = (status: string): string => {
   switch (status) {
-    case 'prospect':
+    case 'uncertain':
+      return 'bg-gray-100 text-gray-800'
+    case 'potential':
       return 'bg-yellow-100 text-yellow-800'
-    case 'active':
+    case 'ongoing':
       return 'bg-green-100 text-green-800'
     case 'completed':
       return 'bg-blue-100 text-blue-800'
@@ -51,12 +53,14 @@ export const getStatusColor = (status: string): string => {
 
 export const getClientStatusColor = (status: string): string => {
   switch (status) {
-    case 'prospect':
+    case 'uncertain':
+      return 'bg-gray-100 text-gray-800'
+    case 'potential':
       return 'bg-yellow-100 text-yellow-800'
-    case 'active':
-      return 'bg-blue-100 text-blue-800'
-    case 'completed':
+    case 'ongoing':
       return 'bg-green-100 text-green-800'
+    case 'completed':
+      return 'bg-blue-100 text-blue-800'
     default:
       return 'bg-gray-100 text-gray-800'
   }
@@ -64,10 +68,12 @@ export const getClientStatusColor = (status: string): string => {
 
 export const getClientStatusLabel = (status: string): string => {
   switch (status) {
-    case 'prospect':
-      return 'Prospect'
-    case 'active':
-      return 'Active'
+    case 'uncertain':
+      return 'Uncertain'
+    case 'potential':
+      return 'Potential'
+    case 'ongoing':
+      return 'Ongoing'
     case 'completed':
       return 'Completed'
     default:
@@ -85,6 +91,8 @@ export const formatCurrency = (amount: number | null, currency: string = 'USD'):
   return new Intl.NumberFormat(getLocaleForCurrency(currency), {
     style: 'currency',
     currency: currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(amount)
 }
 

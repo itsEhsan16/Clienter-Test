@@ -18,7 +18,7 @@ export interface Client {
   budget: number | null
   advance_paid: number | null
   total_amount: number | null
-  status: 'prospect' | 'active' | 'completed'
+  status: 'uncertain' | 'potential' | 'ongoing' | 'completed'
   created_at: string
   updated_at: string
 }

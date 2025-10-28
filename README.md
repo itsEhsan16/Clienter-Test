@@ -1,373 +1,183 @@
-# Clienter - Freelancer Client Management Platform
+# Supabase CLI
 
-A polished SaaS web application for freelancers to manage clients, projects, and meetings. Built with Next.js 14 and Supabase.
+[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
+](https://gitlab.com/sweatybridge/setup-cli/-/pipelines)
 
-## 🎯 Features
+[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
 
-- **Authentication**: Email + Google OAuth via Supabase
-- **Client Management**: Full CRUD operations with tags, notes, and contact details
-- **Project Tracking**: Manage multiple projects per client with budget and status tracking
-- **Meeting Scheduler**: Schedule meetings with Google Meet integration
-- **In-App Reminders**: Never miss a meeting with customizable reminders
-- **Dashboard**: Overview of upcoming meetings, recent clients, and quick actions
-- **Data Export**: Export your client data as CSV or JSON
-- **Responsive Design**: Works beautifully on desktop and mobile
+This repository contains all the functionality for Supabase CLI.
 
-## 🚀 Quick Start
+- [x] Running Supabase locally
+- [x] Managing database migrations
+- [x] Creating and deploying Supabase Functions
+- [x] Generating types directly from your database schema
+- [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
 
-### Prerequisites
+## Getting started
 
-- Node.js 18+ installed
-- A Supabase account ([supabase.com](https://supabase.com))
-- Git
+### Install the CLI
 
-### 1. Clone and Install
+Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
 
 ```bash
-git clone <your-repo-url>
-cd clienter
-npm install
+npm i supabase --save-dev
 ```
 
-### 2. Set Up Supabase
-
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Go to **Settings** → **API** and copy:
-
-   - Project URL
-   - Anon/Public key
-
-3. Run the database schema:
-
-   - Open **SQL Editor** in your Supabase dashboard
-   - Copy and paste the entire content from `supabase/schema.sql`
-   - Click **Run** to create all tables, policies, and functions
-
-4. Enable Google OAuth (optional):
-   - Go to **Authentication** → **Providers**
-   - Enable **Google**
-   - Add your OAuth credentials (from Google Cloud Console)
-   - Add authorized redirect URL: `https://your-project.supabase.co/auth/v1/callback`
-
-### 3. Configure Environment Variables
-
-Create a `.env.local` file in the root directory:
+To install the beta release channel:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+npm i supabase@beta --save-dev
 ```
 
-Replace the values with your actual Supabase credentials.
+When installing with yarn 4, you need to disable experimental fetch with the following nodejs config.
 
-### 4. Run the Development Server
+```
+NODE_OPTIONS=--no-experimental-fetch yarn add supabase
+```
+
+> **Note**
+For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
+
+<details>
+  <summary><b>macOS</b></summary>
+
+  Available via [Homebrew](https://brew.sh). To install:
+
+  ```sh
+  brew install supabase/tap/supabase
+  ```
+
+  To install the beta release channel:
+  
+  ```sh
+  brew install supabase/tap/supabase-beta
+  brew link --overwrite supabase-beta
+  ```
+  
+  To upgrade:
+
+  ```sh
+  brew upgrade supabase
+  ```
+</details>
+
+<details>
+  <summary><b>Windows</b></summary>
+
+  Available via [Scoop](https://scoop.sh). To install:
+
+  ```powershell
+  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
+  scoop install supabase
+  ```
+
+  To upgrade:
+
+  ```powershell
+  scoop update supabase
+  ```
+</details>
+
+<details>
+  <summary><b>Linux</b></summary>
+
+  Available via [Homebrew](https://brew.sh) and Linux packages.
+
+  #### via Homebrew
+
+  To install:
+
+  ```sh
+  brew install supabase/tap/supabase
+  ```
+
+  To upgrade:
+
+  ```sh
+  brew upgrade supabase
+  ```
+
+  #### via Linux packages
+
+  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
+
+  ```sh
+  sudo apk add --allow-untrusted <...>.apk
+  ```
+
+  ```sh
+  sudo dpkg -i <...>.deb
+  ```
+
+  ```sh
+  sudo rpm -i <...>.rpm
+  ```
+
+  ```sh
+  sudo pacman -U <...>.pkg.tar.zst
+  ```
+</details>
+
+<details>
+  <summary><b>Other Platforms</b></summary>
+
+  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
+
+  ```sh
+  go install github.com/supabase/cli@latest
+  ```
+
+  Add a symlink to the binary in `$PATH` for easier access:
+
+  ```sh
+  ln -s "$(go env GOPATH)/bin/cli" /usr/bin/supabase
+  ```
+
+  This works on other non-standard Linux distros.
+</details>
+
+<details>
+  <summary><b>Community Maintained Packages</b></summary>
+
+  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
+  To install in your working directory:
+
+  ```bash
+  pkgx install supabase
+  ```
+
+  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
+</details>
+
+### Run the CLI
 
 ```bash
-npm run dev
+supabase bootstrap
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## 📖 Usage Guide
-
-### First Time Setup
-
-1. **Sign Up**: Create an account using email or Google
-2. **Add Your First Client**: Click "Add Client" on the dashboard
-3. **Create a Project**: Navigate to the client detail page and add a project
-4. **Schedule a Meeting**: Add a meeting with a reminder (try 5 minutes for testing)
-5. **Test Reminders**: Wait for the reminder time - you'll see a toast notification!
-
-### Managing Clients
-
-- **Add Client**: Dashboard → "Add Client" button
-- **View Clients**: Navigation → "Clients"
-- **Edit Client**: Click on any client → "Edit" button
-- **Delete Client**: Client detail page → "Delete" (this also deletes associated projects/meetings)
-- **Export Data**: Clients page → "Export" → Choose CSV or JSON
-
-### Scheduling Meetings
-
-- **From Dashboard**: Click "Schedule Meeting" quick action
-- **From Client**: Go to client detail → "Schedule Meeting"
-- **From Meetings Page**: Navigation → "Meetings" → "New Meeting"
-
-**Meeting Options**:
-
-- Date and time
-- Duration (default 60 minutes)
-- Google Meet link (optional - paste existing link or leave blank)
-- Reminder lead time (5, 15, 30 minutes, or custom)
-
-### Google Meet Integration
-
-**Option 1**: Create meeting in Google Meet first
-
-1. Go to [meet.google.com](https://meet.google.com)
-2. Click "New meeting"
-3. Copy the meeting link
-4. Paste into Clienter's "Meeting Link" field
-
-**Option 2**: Leave link blank
-
-- Schedule meeting without a link
-- Click "Open Google Meet" button when it's time
-- Creates meeting on the spot
-
-### Reminders
-
-Reminders appear in three places:
-
-1. **Toast Notifications**: Pop-up when you're active on the site
-2. **Notification Center**: Bell icon in navigation (shows all active reminders)
-3. **Dashboard**: "Upcoming Reminders" section
-
-**Reminder Behavior**:
-
-- Triggers at the specified lead time before meetings
-- Stays visible for 5 minutes
-- Can be dismissed manually
-- Automatically dismissed after meeting time passes
-
-## 🏗️ Project Structure
-
-```
-clienter/
-├── src/
-│   ├── app/                    # Next.js App Router pages
-│   │   ├── auth/              # Auth callback route
-│   │   ├── dashboard/         # Main dashboard
-│   │   ├── clients/           # Client management pages
-│   │   ├── meetings/          # Meeting pages
-│   │   ├── settings/          # User settings
-│   │   ├── login/             # Login page
-│   │   ├── signup/            # Signup page
-│   │   └── layout.tsx         # Root layout
-│   ├── components/            # React components
-│   │   ├── Navigation.tsx     # Main navigation
-│   │   ├── ReminderEngine.tsx # Reminder system
-│   │   └── NotificationCenter.tsx
-│   ├── contexts/              # React contexts
-│   │   └── AuthContext.tsx    # Auth state management
-│   ├── lib/                   # Utilities and helpers
-│   │   ├── supabase.ts       # Supabase client
-│   │   ├── date-utils.ts     # Date formatting
-│   │   └── utils.ts          # General utilities
-│   ├── store/                 # Zustand stores
-│   │   └── reminderStore.ts  # Reminder state
-│   └── types/                 # TypeScript types
-│       └── database.ts        # Database types
-├── supabase/
-│   ├── schema.sql             # Database schema
-│   └── seed.sql               # Sample data (optional)
-├── public/                    # Static assets
-├── .env.local                 # Environment variables (create this)
-├── .env.example               # Environment template
-├── package.json
-├── tsconfig.json
-├── tailwind.config.ts
-└── next.config.js
-```
-
-## 🗄️ Database Schema
-
-The application uses these main tables:
-
-- **profiles**: User profiles (created automatically on signup)
-- **clients**: Client information
-- **projects**: Projects linked to clients
-- **meetings**: Scheduled meetings
-- **reminders**: Meeting reminders (auto-created with meetings)
-
-All tables have Row Level Security (RLS) enabled - users can only access their own data.
-
-## 🎨 Customization
-
-### Change Brand Colors
-
-Edit `tailwind.config.ts`:
-
-```typescript
-colors: {
-  primary: {
-    // Change these values
-    500: '#0ea5e9',
-    600: '#0284c7',
-    // ...
-  },
-}
-```
-
-### Adjust Default Reminder Time
-
-Edit user settings or modify `supabase/schema.sql`:
-
-```sql
-default_reminder_minutes INTEGER DEFAULT 15  -- Change default here
-```
-
-### Add Custom Fields
-
-1. Modify database schema in Supabase SQL Editor
-2. Update TypeScript types in `src/types/database.ts`
-3. Update forms in relevant page components
-
-## 🚢 Deployment
-
-### Deploy to Vercel (Recommended)
-
-1. Push your code to GitHub
-
-2. Go to [vercel.com](https://vercel.com) and import your repository
-
-3. Configure environment variables:
-
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `NEXT_PUBLIC_APP_URL` (your Vercel deployment URL)
-
-4. Update Supabase auth settings:
-
-   - Go to Supabase → **Authentication** → **URL Configuration**
-   - Add your Vercel URL to **Redirect URLs**
-
-5. Deploy!
-
-### Other Platforms
-
-The app can be deployed to any platform that supports Next.js:
-
-- Netlify
-- Railway
-- Render
-- AWS Amplify
-- Digital Ocean App Platform
-
-Make sure to:
-
-- Set environment variables
-- Update Supabase redirect URLs
-- Use Node.js 18+
-
-## 📊 Seeding Demo Data
-
-To add sample data for testing:
-
-1. Sign up and note your user ID:
-
-   ```sql
-   SELECT id FROM auth.users WHERE email = 'your@email.com';
-   ```
-
-2. Edit `supabase/seed.sql` and replace `YOUR_USER_ID`
-
-3. Run the seed script in Supabase SQL Editor
-
-## 🔒 Security Features
-
-- **Row Level Security**: All database queries are automatically scoped to the current user
-- **Secure Authentication**: Powered by Supabase Auth with industry-standard security
-- **No API Keys in Frontend**: All sensitive operations use Supabase RLS
-- **HTTPS Only**: Production deployments should always use HTTPS
-
-## 🛠️ Development
-
-### Available Scripts
+Or using npx:
 
 ```bash
-npm run dev          # Start development server
-npm run build        # Build for production
-npm run start        # Start production server
-npm run lint         # Run ESLint
-npm run type-check   # Run TypeScript compiler check
+npx supabase bootstrap
 ```
 
-### Code Style
+The bootstrap command will guide you through the process of setting up a Supabase project using one of the [starter](https://github.com/supabase-community/supabase-samples/blob/main/samples.json) templates.
 
-- TypeScript for type safety
-- ESLint for code quality
-- Tailwind CSS for styling
-- Client components (`'use client'`) for interactivity
+## Docs
 
-## 🐛 Troubleshooting
+Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
 
-### "Cannot find module" errors
+## Breaking changes
 
-```bash
-rm -rf node_modules package-lock.json
-npm install
+We follow semantic versioning for changes that directly impact CLI commands, flags, and configurations.
+
+However, due to dependencies on other service images, we cannot guarantee that schema migrations, seed.sql, and generated types will always work for the same CLI major version. If you need such guarantees, we encourage you to pin a specific version of CLI in package.json.
+
+## Developing
+
+To run from source:
+
+```sh
+# Go >= 1.22
+go run . help
 ```
-
-### Authentication not working
-
-- Check environment variables are set correctly
-- Verify Supabase URL and key in `.env.local`
-- Check browser console for errors
-
-### Reminders not appearing
-
-- Ensure meeting time is in the future
-- Check notification center (bell icon)
-- Verify reminder lead time settings
-- Check browser console for errors
-
-### Database errors
-
-- Verify schema was run completely
-- Check RLS policies are enabled
-- Ensure user is authenticated
-
-## 📝 Environment Variables
-
-| Variable                        | Description                      | Required |
-| ------------------------------- | -------------------------------- | -------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Your Supabase project URL        | Yes      |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous key      | Yes      |
-| `NEXT_PUBLIC_APP_URL`           | Your application URL (for OAuth) | Yes      |
-
-## 🤝 Contributing
-
-This is a complete production-ready application. Feel free to:
-
-- Fork and customize for your needs
-- Report bugs or issues
-- Suggest new features
-- Submit pull requests
-
-## 📄 License
-
-MIT License - feel free to use this project for personal or commercial purposes.
-
-## 🙏 Acknowledgments
-
-Built with:
-
-- [Next.js 14](https://nextjs.org/)
-- [Supabase](https://supabase.com/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [Lucide Icons](https://lucide.dev/)
-- [date-fns](https://date-fns.org/)
-- [Zustand](https://zustand-demo.pmnd.rs/)
-
-## 💡 Tips for Freelancers
-
-1. **Add clients immediately** after closing a deal
-2. **Schedule meetings right away** to get reminders
-3. **Use tags** to organize clients by service type
-4. **Export data regularly** as a backup
-5. **Set realistic reminder times** (15 min usually works well)
-6. **Update project status** to track your workload
-
-## 📧 Support
-
-For issues or questions:
-
-1. Check the troubleshooting section above
-2. Review Supabase documentation
-3. Check browser console for errors
-4. Verify all setup steps were completed
-
----
-
-**Made for freelancers, by developers. Happy freelancing! 🚀**

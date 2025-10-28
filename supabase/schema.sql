@@ -19,7 +19,7 @@ CREATE TABLE clients (
   budget DECIMAL(10, 2),
   advance_paid DECIMAL(10, 2) DEFAULT 0,
   total_amount DECIMAL(10, 2),
-  status TEXT DEFAULT 'prospect' CHECK (status IN ('prospect', 'active', 'completed')),
+  status TEXT DEFAULT 'uncertain' CHECK (status IN ('uncertain', 'potential', 'ongoing', 'completed')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
