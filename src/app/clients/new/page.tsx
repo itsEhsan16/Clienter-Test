@@ -35,6 +35,18 @@ export default function NewClientPage() {
     setSuccess(false)
 
     try {
+      // Get the max order for the selected status
+      const { data: maxOrderData } = await supabase
+        .from('clients')
+        .select('order')
+        .eq('user_id', user.id)
+        .eq('status', formData.status)
+        .order('order', { ascending: false })
+        .limit(1)
+
+      const nextOrder =
+        maxOrderData && maxOrderData.length > 0 ? (maxOrderData[0].order || 0) + 1 : 0
+
       const clientData = {
         user_id: user.id,
         name: formData.name.trim(),
@@ -43,6 +55,7 @@ export default function NewClientPage() {
         total_amount: formData.total_amount ? parseFloat(formData.total_amount) : null,
         advance_paid: formData.advance_paid ? parseFloat(formData.advance_paid) : 0,
         status: formData.status,
+        order: nextOrder,
       }
 
       const { data, error: insertError } = await supabase

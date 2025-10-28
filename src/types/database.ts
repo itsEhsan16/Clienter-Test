@@ -19,6 +19,7 @@ export interface Client {
   advance_paid: number | null
   total_amount: number | null
   status: 'uncertain' | 'potential' | 'ongoing' | 'completed'
+  order: number
   created_at: string
   updated_at: string
 }

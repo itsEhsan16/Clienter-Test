@@ -24,7 +24,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { KanbanColumn } from '@/components/KanbanColumn'
 import { KanbanCard } from '@/components/KanbanCard'
 
@@ -57,7 +57,8 @@ export default function ClientsPage() {
         .from('clients')
         .select('*')
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
+        .order('status', { ascending: true })
+        .order('order', { ascending: true })
 
       if (error) {
         setError('Clients fetch error: ' + error.message)
@@ -116,7 +117,7 @@ export default function ClientsPage() {
     const activeClient = clients.find((c) => c.id === activeId)
     if (!activeClient) return
 
-    // If dropped on a column
+    // If dropped on a column (status change)
     if (STATUSES.includes(overId as any)) {
       const newStatus = overId as Client['status']
       if (newStatus === activeClient.status) return
@@ -136,6 +137,59 @@ export default function ClientsPage() {
         setClients((prev) =>
           prev.map((c) => (c.id === activeId ? { ...c, status: activeClient.status } : c))
         )
+      }
+    } else {
+      // Reordering within the same column
+      const overClient = clients.find((c) => c.id === overId)
+      if (!overClient || activeClient.status !== overClient.status) return
+
+      const statusClients = clients.filter((c) => c.status === activeClient.status)
+      const activeIndex = statusClients.findIndex((c) => c.id === activeId)
+      const overIndex = statusClients.findIndex((c) => c.id === overId)
+
+      if (activeIndex === -1 || overIndex === -1) return
+
+      // Reorder the clients in this status
+      const reorderedClients = arrayMove(statusClients, activeIndex, overIndex)
+
+      // Update orders
+      const updatedClients = reorderedClients.map((client, index) => ({
+        ...client,
+        order: index,
+      }))
+
+      // Update local state
+      setClients((prev) => {
+        const newClients = prev.filter((c) => c.status !== activeClient.status)
+        return [...newClients, ...updatedClients]
+      })
+
+      // Update database orders
+      const updates = updatedClients.map((client) => ({
+        id: client.id,
+        order: client.order,
+      }))
+
+      if (!user) return
+
+      for (const update of updates) {
+        const { error } = await supabase
+          .from('clients')
+          .update({ order: update.order })
+          .eq('id', update.id)
+
+        if (error) {
+          console.error('Error updating client order:', error)
+          // Revert on error - refetch clients
+          const { data } = await supabase
+            .from('clients')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('status', { ascending: true })
+            .order('order', { ascending: true })
+          if (data) setClients(data)
+          break
+        }
       }
     }
   }
