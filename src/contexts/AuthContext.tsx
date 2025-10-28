@@ -155,26 +155,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializingRef.current = true
 
-    const initAuth = async () => {
+    const restoreSession = async () => {
       try {
+        // Try to restore session from cookies
         const {
           data: { session },
+          error: sessionError,
         } = await supabase.auth.getSession()
-        console.log('[Auth] initAuth: session', session)
+        console.log('[Auth] restoreSession: session', session, sessionError)
+        if (sessionError) {
+          setError('Session restoration failed. Please log in again.')
+          setUser(null)
+          setProfile(null)
+          profileCacheRef.current.clear()
+          setLoading(false)
+          initializingRef.current = false
+          return
+        }
         if (session?.user) {
           setUser(session.user)
           await ensureProfile(session.user.id, session.user.email || '')
           await fetchProfile(session.user.id)
+        } else {
+          setUser(null)
+          setProfile(null)
+          profileCacheRef.current.clear()
         }
       } catch (error) {
-        console.error('[Auth] Init error:', error)
+        setError('Error restoring session. Please log in again.')
+        setUser(null)
+        setProfile(null)
+        profileCacheRef.current.clear()
+        console.error('[Auth] restoreSession error:', error)
       } finally {
         setLoading(false)
         initializingRef.current = false
       }
     }
 
-    initAuth()
+    restoreSession()
 
     // Reduced timeout for faster failure recovery
     const timeout = setTimeout(() => {
@@ -189,16 +208,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
       console.log('[Auth] onAuthStateChange:', { event, session })
-      setUser(session?.user ?? null)
-
       if (session?.user) {
+        setUser(session.user)
         await ensureProfile(session.user.id, session.user.email || '')
         await fetchProfile(session.user.id)
       } else {
+        setUser(null)
         setProfile(null)
         profileCacheRef.current.clear()
       }
-
       if (loading) {
         setLoading(false)
       }
