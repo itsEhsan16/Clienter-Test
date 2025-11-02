@@ -53,20 +53,20 @@ export default function ClientsPage() {
     const fetchClients = async () => {
       setIsLoading(true)
       setError(null)
-      
+
       try {
         // Add timeout protection
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Fetch clients timed out after 10 seconds')), 10000)
         )
-        
+
         const fetchPromise = supabase
           .from('clients')
           .select('*')
           .eq('user_id', user.id)
           .order('status', { ascending: true })
           .order('order', { ascending: true })
-        
+
         const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
 
         if (error) {

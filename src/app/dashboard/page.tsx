@@ -52,19 +52,22 @@ export default function DashboardPage() {
 
       // Check if we have a valid session
       try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-        console.log('[Dashboard] Current session:', { 
-          hasSession: !!session, 
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
+        console.log('[Dashboard] Current session:', {
+          hasSession: !!session,
           userId: session?.user?.id,
-          error: sessionError 
+          error: sessionError,
         })
-        
+
         if (!session) {
           setError('No active session found. Please try logging out and back in.')
           setIsLoading(false)
           return
         }
-        
+
         if (session.user.id !== user.id) {
           setError('Session user mismatch. Please refresh the page.')
           setIsLoading(false)
@@ -93,17 +96,30 @@ export default function DashboardPage() {
         console.log('[Dashboard] Starting queries...')
 
         // Helper function to add timeout to any promise
-        const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> => {
+        const withTimeout = <T,>(
+          promise: Promise<T>,
+          timeoutMs: number,
+          operation: string
+        ): Promise<T> => {
           return Promise.race([
             promise,
             new Promise<T>((_, reject) =>
-              setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs)
+              setTimeout(
+                () => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)),
+                timeoutMs
+              )
             ),
           ])
         }
 
         // Fetch all data with proper error handling and timeout
-        const [clientsResult, remindersResult, clientsCountResult, allClientsResult, meetingsCountResult] = await withTimeout(
+        const [
+          clientsResult,
+          remindersResult,
+          clientsCountResult,
+          allClientsResult,
+          meetingsCountResult,
+        ] = await withTimeout(
           Promise.all([
             supabase
               .from('clients')
@@ -111,7 +127,7 @@ export default function DashboardPage() {
               .eq('user_id', user.id)
               .order('created_at', { ascending: false })
               .limit(5),
-            
+
             supabase
               .from('reminders')
               .select(`*,meeting:meetings (*,client:clients (*))`)
@@ -120,22 +136,22 @@ export default function DashboardPage() {
               .gte('remind_at', new Date().toISOString())
               .order('remind_at', { ascending: true })
               .limit(5),
-            
+
             supabase
               .from('clients')
               .select('*', { count: 'exact', head: true })
               .eq('user_id', user.id),
-            
+
             supabase
               .from('clients')
               .select('total_amount, advance_paid, status')
               .eq('user_id', user.id)
               .in('status', ['ongoing', 'potential']),
-            
+
             supabase
               .from('meetings')
               .select('*', { count: 'exact', head: true })
-              .eq('user_id', user.id)
+              .eq('user_id', user.id),
           ]),
           10000, // 10 second timeout for all queries combined
           'Dashboard data fetch'
@@ -196,7 +212,10 @@ export default function DashboardPage() {
       } catch (err: any) {
         clearTimeout(timeoutId)
         console.error('[Dashboard] Error fetching dashboard data:', err)
-        setError('Failed to load dashboard: ' + (err?.message || 'Unknown error. Please try refreshing the page.'))
+        setError(
+          'Failed to load dashboard: ' +
+            (err?.message || 'Unknown error. Please try refreshing the page.')
+        )
       } finally {
         clearTimeout(timeoutId)
         setIsLoading(false)
@@ -267,7 +286,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-{/* testing for commit */}
+        {/* testing for commit */}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
