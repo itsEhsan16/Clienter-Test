@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createBrowserClient as createBrowserSupabaseClient } from '@supabase/ssr'
 
 // Singleton instance
 let supabaseInstance: SupabaseClient | null = null
@@ -40,29 +41,29 @@ export const createBrowserClient = () => {
 
   console.log('[Supabase Client] Creating new client instance')
 
-  // Extract project ref from URL for storage key
-  const projectRef = supabaseUrl.split('//')[1].split('.')[0]
-  const storageKey = `sb-${projectRef}-auth-token`
-
-  console.log('[Supabase Client] Using storage key:', storageKey)
-
-  // Create client with proper PKCE storage configuration
-  supabaseInstance = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      // Only detect session in URL on the callback page to prevent interference elsewhere
-      detectSessionInUrl:
-        typeof window !== 'undefined' && window.location.pathname.includes('/auth/callback'),
-      flowType: 'pkce',
-      // Ensure storage is configured properly - critical for OAuth PKCE flow
-      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-      storageKey: storageKey,
-    },
-    global: {
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
+  // Use @supabase/ssr for proper browser client with cookie handling
+  supabaseInstance = createBrowserSupabaseClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      get(name: string) {
+        if (typeof document === 'undefined') return undefined
+        const value = `; ${document.cookie}`
+        const parts = value.split(`; ${name}=`)
+        if (parts.length === 2) return parts.pop()?.split(';').shift()
+        return undefined
+      },
+      set(name: string, value: string, options: any) {
+        if (typeof document === 'undefined') return
+        let cookie = `${name}=${value}`
+        if (options?.maxAge) cookie += `; max-age=${options.maxAge}`
+        if (options?.path) cookie += `; path=${options.path}`
+        if (options?.domain) cookie += `; domain=${options.domain}`
+        if (options?.sameSite) cookie += `; samesite=${options.sameSite}`
+        if (options?.secure) cookie += '; secure'
+        document.cookie = cookie
+      },
+      remove(name: string, options: any) {
+        if (typeof document === 'undefined') return
+        this.set(name, '', { ...options, maxAge: 0 })
       },
     },
   })

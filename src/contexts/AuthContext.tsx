@@ -42,8 +42,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [supabase] = useState(() => {
     try {
       const client = createBrowserClient()
+      console.log('[AuthContext] Supabase client initialized')
       return client
     } catch (err) {
+      console.error('[AuthContext] Failed to initialize Supabase:', err)
       setError(err instanceof Error ? err.message : 'Failed to initialize Supabase')
       return null
     }

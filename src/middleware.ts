@@ -11,10 +11,12 @@ export async function middleware(req: NextRequest) {
   // Fast path: Don't interfere with callbacks, API routes, or static files
   if (
     pathname.startsWith('/auth/callback') ||
+    pathname.startsWith('/api/auth/') ||
     pathname.startsWith('/api/') ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/favicon.ico')
   ) {
+    console.log('[Middleware] Skipping auth check for:', pathname)
     return NextResponse.next()
   }
 

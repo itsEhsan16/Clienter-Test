@@ -12,23 +12,30 @@ export default function AuthCallback() {
     const handleCallback = async () => {
       try {
         console.log('[Auth Callback] Starting OAuth callback handling...')
+        console.log('[Auth Callback] Current URL:', window.location.href)
+
         const supabase = createBrowserClient()
 
-        // Exchange the code for a session
-        // This will automatically use the code_verifier from localStorage
-        const { data, error } = await supabase.auth.exchangeCodeForSession(window.location.href)
+        // The @supabase/ssr browser client automatically handles the code exchange
+        // and uses the code_verifier from cookies
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
 
-        if (error) {
-          console.error('[Auth Callback] Error exchanging code for session:', error)
-          setError(error.message)
+        if (sessionError) {
+          console.error('[Auth Callback] Error getting session:', sessionError)
+          setError(sessionError.message)
           setTimeout(() => {
-            router.push('/login?error=oauth_failed&details=' + encodeURIComponent(error.message))
+            router.push(
+              '/login?error=oauth_failed&details=' + encodeURIComponent(sessionError.message)
+            )
           }, 2000)
           return
         }
 
-        if (!data.session) {
-          console.error('[Auth Callback] No session returned after code exchange')
+        if (!session) {
+          console.error('[Auth Callback] No session after callback')
           setError('No session created')
           setTimeout(() => {
             router.push('/login?error=no_session')
@@ -36,26 +43,7 @@ export default function AuthCallback() {
           return
         }
 
-        console.log(
-          '[Auth Callback] Session created successfully for user:',
-          data.session.user.email
-        )
-
-        // Optional: Set session cookies for SSR/middleware via API
-        try {
-          await fetch('/api/auth/set-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              access_token: data.session.access_token,
-              refresh_token: data.session.refresh_token,
-              expires_at: data.session.expires_at,
-              expires_in: data.session.expires_in ?? 3600,
-            }),
-          })
-        } catch (e) {
-          console.warn('[Auth Callback] Failed to set session cookies:', e)
-        }
+        console.log('[Auth Callback] Session created successfully for user:', session.user.email)
 
         // Redirect to dashboard
         router.push('/dashboard')
