@@ -1,4 +1,4 @@
-import { createBrowserClient as createBrowserClientSSR } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // Singleton instance
@@ -39,22 +39,35 @@ export const createBrowserClient = () => {
   }
 
   console.log('[Supabase Client] Creating new client instance')
-  supabaseInstance = createBrowserClientSSR(supabaseUrl, supabaseKey, {
+
+  // Extract project ref from URL for storage key
+  const projectRef = supabaseUrl.split('//')[1].split('.')[0]
+  const storageKey = `sb-${projectRef}-auth-token`
+
+  console.log('[Supabase Client] Using storage key:', storageKey)
+
+  // Create client with proper PKCE storage configuration
+  supabaseInstance = createClient(supabaseUrl, supabaseKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
-      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-      storageKey: 'supabase.auth.token',
+      // Only detect session in URL on the callback page to prevent interference elsewhere
+      detectSessionInUrl:
+        typeof window !== 'undefined' && window.location.pathname.includes('/auth/callback'),
       flowType: 'pkce',
+      // Ensure storage is configured properly - critical for OAuth PKCE flow
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storageKey: storageKey,
     },
     global: {
       headers: {
-        'X-Client-Info': 'clienter-app',
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
       },
     },
   })
 
+  console.log('[Supabase Client] Client created successfully')
   return supabaseInstance
 }
 

@@ -1,63 +1,47 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase'
-import { Loader2 } from 'lucide-react'
 
-export default function AuthCallbackPage() {
+export default function AuthCallback() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [error, setError] = useState<string | null>(null)
-  const supabase = createBrowserClient()
 
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        const code = searchParams.get('code')
-        const errorParam = searchParams.get('error')
-        const errorDescription = searchParams.get('error_description')
+        console.log('[Auth Callback] Starting OAuth callback handling...')
+        const supabase = createBrowserClient()
 
-        console.log('[Auth Callback] Received:', {
-          hasCode: !!code,
-          error: errorParam,
-          errorDescription,
-        })
+        // Exchange the code for a session
+        // This will automatically use the code_verifier from localStorage
+        const { data, error } = await supabase.auth.exchangeCodeForSession(window.location.href)
 
-        if (errorParam) {
-          console.error('[Auth Callback] OAuth error:', errorParam, errorDescription)
-          router.push(`/login?error=${encodeURIComponent(errorDescription || errorParam)}`)
-          return
-        }
-
-        if (!code) {
-          console.error('[Auth Callback] No code present')
-          router.push('/login?error=no_code')
-          return
-        }
-
-        console.log('[Auth Callback] Exchanging code for session...')
-
-        // This will use the code verifier from localStorage automatically
-        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
-
-        if (exchangeError) {
-          console.error('[Auth Callback] Exchange failed:', exchangeError)
-          router.push(
-            `/login?error=oauth_failed&details=${encodeURIComponent(exchangeError.message)}`
-          )
+        if (error) {
+          console.error('[Auth Callback] Error exchanging code for session:', error)
+          setError(error.message)
+          setTimeout(() => {
+            router.push('/login?error=oauth_failed&details=' + encodeURIComponent(error.message))
+          }, 2000)
           return
         }
 
         if (!data.session) {
-          console.error('[Auth Callback] No session after exchange')
-          router.push('/login?error=no_session')
+          console.error('[Auth Callback] No session returned after code exchange')
+          setError('No session created')
+          setTimeout(() => {
+            router.push('/login?error=no_session')
+          }, 2000)
           return
         }
 
-        console.log('[Auth Callback] Session created successfully for:', data.session.user.email)
+        console.log(
+          '[Auth Callback] Session created successfully for user:',
+          data.session.user.email
+        )
 
-        // Set session cookies via API for SSR
+        // Optional: Set session cookies for SSR/middleware via API
         try {
           await fetch('/api/auth/set-session', {
             method: 'POST',
@@ -70,42 +54,57 @@ export default function AuthCallbackPage() {
             }),
           })
         } catch (e) {
-          console.warn('[Auth Callback] Failed to set server cookies:', e)
+          console.warn('[Auth Callback] Failed to set session cookies:', e)
         }
 
         // Redirect to dashboard
         router.push('/dashboard')
         router.refresh()
-      } catch (err: any) {
-        console.error('[Auth Callback] Unexpected error:', err)
-        setError(err?.message || 'An unexpected error occurred')
+      } catch (e: any) {
+        console.error('[Auth Callback] Unexpected error:', e)
+        setError(e?.message || 'Unknown error')
         setTimeout(() => {
-          router.push(`/login?error=${encodeURIComponent(err?.message || 'callback_error')}`)
+          router.push('/login?error=unexpected_error')
         }, 2000)
       }
     }
 
     handleCallback()
-  }, [router, searchParams, supabase])
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="text-red-600 text-lg font-semibold mb-4">Authentication Failed</div>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <p className="text-sm text-gray-500">Redirecting to login...</p>
-        </div>
-      </div>
-    )
-  }
+  }, [router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto mb-4" />
-        <p className="text-gray-700 font-semibold">Completing sign in...</p>
-        <p className="text-sm text-gray-500 mt-2">Please wait while we verify your account</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-black to-gray-900">
+      <div className="max-w-md w-full text-center">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl mb-4 animate-pulse">
+          <span className="text-white font-bold text-2xl">C</span>
+        </div>
+        <h1 className="text-2xl font-bold text-white mb-2">
+          {error ? 'Authentication Failed' : 'Signing you in...'}
+        </h1>
+        {error ? (
+          <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 mt-4">
+            <p className="text-red-400 text-sm">{error}</p>
+            <p className="text-gray-400 text-xs mt-2">Redirecting to login...</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-gray-400 mb-8">Please wait while we complete your authentication</p>
+            <div className="flex justify-center gap-2">
+              <div
+                className="w-3 h-3 bg-orange-500 rounded-full animate-bounce"
+                style={{ animationDelay: '0ms' }}
+              ></div>
+              <div
+                className="w-3 h-3 bg-orange-500 rounded-full animate-bounce"
+                style={{ animationDelay: '150ms' }}
+              ></div>
+              <div
+                className="w-3 h-3 bg-orange-500 rounded-full animate-bounce"
+                style={{ animationDelay: '300ms' }}
+              ></div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

@@ -3,6 +3,7 @@ CREATE TABLE profiles (
   id UUID REFERENCES auth.users(id) PRIMARY KEY,
   email TEXT NOT NULL,
   full_name TEXT,
+  currency TEXT DEFAULT 'INR',
   timezone TEXT DEFAULT 'UTC',
   default_reminder_minutes INTEGER DEFAULT 15,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),

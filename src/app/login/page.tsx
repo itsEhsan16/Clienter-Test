@@ -104,16 +104,17 @@ function LoginForm() {
     setSuccess('')
 
     try {
-      console.log('[Login] Initiating Google OAuth…')
+      console.log('[Login] Initiating Google OAuth with PKCE…')
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          // Always return to the OAuth callback without extra params
           redirectTo: `${window.location.origin}/auth/callback`,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
           },
+          skipBrowserRedirect: false,
         },
       })
 
@@ -121,9 +122,11 @@ function LoginForm() {
         setError(error.message)
         setLoading(false)
         console.error('[Login] Google OAuth init error:', error.message)
+        return
       }
+
       console.log('[Login] OAuth started, browser will redirect to Google', data)
-      // If successful, the browser will redirect to Google
+      // Browser will redirect - loading state will continue
     } catch (err) {
       console.error('[Login] Google login error:', err)
       setError('Failed to initiate Google login. Please try again.')

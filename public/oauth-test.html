@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OAuth Test Helper</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+      }
+      .container {
+        background: white;
+        border-radius: 20px;
+        padding: 40px;
+        max-width: 600px;
+        width: 100%;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+      h1 {
+        color: #333;
+        margin-bottom: 10px;
+        font-size: 28px;
+      }
+      .subtitle {
+        color: #666;
+        margin-bottom: 30px;
+        font-size: 14px;
+      }
+      .section {
+        margin: 20px 0;
+        padding: 20px;
+        background: #f7f7f7;
+        border-radius: 10px;
+      }
+      .section h2 {
+        color: #667eea;
+        font-size: 18px;
+        margin-bottom: 15px;
+      }
+      button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s;
+        margin: 5px;
+      }
+      button:hover {
+        transform: translateY(-2px);
+      }
+      button:active {
+        transform: translateY(0);
+      }
+      .danger {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      }
+      .success {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      }
+      .output {
+        background: #1e1e1e;
+        color: #00ff00;
+        padding: 15px;
+        border-radius: 8px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        max-height: 300px;
+        overflow-y: auto;
+        margin-top: 15px;
+      }
+      .output div {
+        margin: 5px 0;
+      }
+      .error {
+        color: #ff6b6b;
+      }
+      .info {
+        color: #4ecdc4;
+      }
+      .success-msg {
+        color: #00ff00;
+      }
+      .status {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        margin: 5px;
+      }
+      .status.good {
+        background: #d4edda;
+        color: #155724;
+      }
+      .status.bad {
+        background: #f8d7da;
+        color: #721c24;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔧 OAuth Test Helper</h1>
+      <p class="subtitle">Test your Supabase OAuth configuration</p>
+
+      <div class="section">
+        <h2>1. Clear Browser State</h2>
+        <button onclick="clearAll()" class="danger">Clear All Storage</button>
+        <button onclick="checkStorage()">Check Current Storage</button>
+        <div id="storageOutput" class="output" style="display: none"></div>
+      </div>
+
+      <div class="section">
+        <h2>2. Check Configuration</h2>
+        <button onclick="checkConfig()" class="success">Check Supabase Config</button>
+        <div id="configOutput" class="output" style="display: none"></div>
+      </div>
+
+      <div class="section">
+        <h2>3. Test Login Flow</h2>
+        <button onclick="openLogin()">Open Login Page</button>
+        <button onclick="checkSession()">Check Current Session</button>
+        <div id="sessionOutput" class="output" style="display: none"></div>
+      </div>
+
+      <div class="section">
+        <h2>4. Debug Info</h2>
+        <div id="debugInfo"></div>
+      </div>
+    </div>
+
+    <script>
+      function log(element, message, type = 'info') {
+        const output = document.getElementById(element)
+        output.style.display = 'block'
+        const div = document.createElement('div')
+        div.className = type
+        div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`
+        output.appendChild(div)
+        output.scrollTop = output.scrollHeight
+      }
+
+      function clearAll() {
+        const before = {
+          localStorage: Object.keys(localStorage).length,
+          sessionStorage: Object.keys(sessionStorage).length,
+          cookies: document.cookie.split(';').length,
+        }
+
+        localStorage.clear()
+        sessionStorage.clear()
+
+        // Clear cookies
+        document.cookie.split(';').forEach((c) => {
+          document.cookie = c
+            .replace(/^ +/, '')
+            .replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/')
+        })
+
+        const after = {
+          localStorage: Object.keys(localStorage).length,
+          sessionStorage: Object.keys(sessionStorage).length,
+          cookies: document.cookie.split(';').length,
+        }
+
+        log('storageOutput', `✅ Cleared ${before.localStorage} localStorage items`, 'success-msg')
+        log(
+          'storageOutput',
+          `✅ Cleared ${before.sessionStorage} sessionStorage items`,
+          'success-msg'
+        )
+        log('storageOutput', `✅ Cleared ${before.cookies} cookies`, 'success-msg')
+        log(
+          'storageOutput',
+          `📊 Current state: ${after.localStorage} localStorage, ${after.sessionStorage} sessionStorage, ${after.cookies} cookies`,
+          'info'
+        )
+      }
+
+      function checkStorage() {
+        const output = document.getElementById('storageOutput')
+        output.innerHTML = ''
+
+        log('storageOutput', '📦 LocalStorage:', 'info')
+        if (localStorage.length === 0) {
+          log('storageOutput', '   Empty', 'info')
+        } else {
+          Object.keys(localStorage).forEach((key) => {
+            const value = localStorage.getItem(key)
+            const display = value.length > 50 ? value.substring(0, 50) + '...' : value
+            log('storageOutput', `   ${key}: ${display}`, 'info')
+          })
+        }
+
+        log('storageOutput', '', 'info')
+        log('storageOutput', '📦 SessionStorage:', 'info')
+        if (sessionStorage.length === 0) {
+          log('storageOutput', '   Empty', 'info')
+        } else {
+          Object.keys(sessionStorage).forEach((key) => {
+            log('storageOutput', `   ${key}`, 'info')
+          })
+        }
+
+        log('storageOutput', '', 'info')
+        log('storageOutput', '🍪 Cookies:', 'info')
+        if (!document.cookie) {
+          log('storageOutput', '   No cookies', 'info')
+        } else {
+          document.cookie.split(';').forEach((cookie) => {
+            log('storageOutput', `   ${cookie.trim()}`, 'info')
+          })
+        }
+      }
+
+      function checkConfig() {
+        const output = document.getElementById('configOutput')
+        output.innerHTML = ''
+
+        // Check if running on localhost
+        const isLocalhost = window.location.hostname === 'localhost'
+        const port = window.location.port
+
+        log('configOutput', `🌍 Current URL: ${window.location.href}`, 'info')
+        log(
+          'configOutput',
+          `${isLocalhost ? '✅' : '❌'} Running on localhost`,
+          isLocalhost ? 'success-msg' : 'error'
+        )
+        log('configOutput', `📍 Port: ${port}`, 'info')
+
+        // Check expected callback URL
+        const callbackUrl = `${window.location.origin}/api/auth/callback`
+        log('configOutput', '', 'info')
+        log('configOutput', '📋 Expected Configuration:', 'info')
+        log('configOutput', `   Callback URL: ${callbackUrl}`, 'info')
+        log('configOutput', `   Storage Key: sb-zviakkdqtmhqfkxjjqvn-auth-token`, 'info')
+
+        // Update debug info
+        updateDebugInfo()
+      }
+
+      async function checkSession() {
+        const output = document.getElementById('sessionOutput')
+        output.innerHTML = ''
+
+        log('sessionOutput', '🔍 Checking for session...', 'info')
+
+        // Check for auth tokens in storage
+        const authKey = 'sb-zviakkdqtmhqfkxjjqvn-auth-token'
+        const token = localStorage.getItem(authKey)
+
+        if (token) {
+          try {
+            const data = JSON.parse(token)
+            log('sessionOutput', '✅ Session found in localStorage', 'success-msg')
+            log('sessionOutput', `   User ID: ${data.user?.id || 'N/A'}`, 'info')
+            log('sessionOutput', `   Email: ${data.user?.email || 'N/A'}`, 'info')
+            log(
+              'sessionOutput',
+              `   Expires: ${new Date(data.expires_at * 1000).toLocaleString()}`,
+              'info'
+            )
+
+            const now = Date.now() / 1000
+            if (data.expires_at > now) {
+              log('sessionOutput', '✅ Session is still valid', 'success-msg')
+            } else {
+              log('sessionOutput', '⚠️  Session has expired', 'error')
+            }
+          } catch (e) {
+            log('sessionOutput', '❌ Error parsing session data', 'error')
+          }
+        } else {
+          log('sessionOutput', '❌ No session found', 'error')
+          log('sessionOutput', '   Please log in first', 'info')
+        }
+      }
+
+      function openLogin() {
+        const loginUrl = `${window.location.origin}/login`
+        log('sessionOutput', `🚀 Opening login page: ${loginUrl}`, 'info')
+        window.location.href = loginUrl
+      }
+
+      function updateDebugInfo() {
+        const debugDiv = document.getElementById('debugInfo')
+        debugDiv.innerHTML = `
+                <div style="margin-top: 10px;">
+                    <span class="status ${
+                      window.location.hostname === 'localhost' ? 'good' : 'bad'
+                    }">
+                        ${
+                          window.location.hostname === 'localhost'
+                            ? '✅ Localhost'
+                            : '❌ Not Localhost'
+                        }
+                    </span>
+                    <span class="status ${localStorage.length === 0 ? 'good' : 'bad'}">
+                        ${localStorage.length === 0 ? '✅ Clean Storage' : '⚠️  Has Storage'}
+                    </span>
+                    <span class="status ${document.cookie ? 'good' : 'bad'}">
+                        ${document.cookie ? '✅ Has Cookies' : '❌ No Cookies'}
+                    </span>
+                </div>
+            `
+      }
+
+      // Initialize on load
+      window.onload = function () {
+        updateDebugInfo()
+
+        // Check if we're coming from a redirect
+        const params = new URLSearchParams(window.location.search)
+        if (params.has('error')) {
+          log('sessionOutput', `❌ Error: ${params.get('error')}`, 'error')
+          if (params.has('details')) {
+            log(
+              'sessionOutput',
+              `   Details: ${decodeURIComponent(params.get('details'))}`,
+              'error'
+            )
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

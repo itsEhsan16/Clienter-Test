@@ -51,37 +51,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Helper to ensure profile exists for user
   const ensureProfile = async (userId: string, email: string) => {
-    if (!supabase) return
+    if (!supabase) return false
     try {
       const { data: existingProfile, error: fetchError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single()
+        .maybeSingle() // Use maybeSingle instead of single to avoid error on 0 rows
+
       console.log('[Auth] ensureProfile: fetch result', { userId, existingProfile, fetchError })
+
+      if (fetchError) {
+        console.error('[Auth] ensureProfile: error fetching profile', fetchError)
+        return false
+      }
+
       if (!existingProfile) {
+        console.log('[Auth] ensureProfile: Creating new profile for user', userId)
         const { error: insertError } = await supabase
           .from('profiles')
-          .insert([{ id: userId, email, full_name: '' }])
+          .insert([{ id: userId, email, full_name: '', currency: 'INR' }])
         if (insertError) {
-          setError('Failed to create profile for user. Please contact support.')
           console.error('[Auth] ensureProfile: error inserting profile', insertError)
+          return false
         } else {
           console.log('[Auth] ensureProfile: created missing profile for user', userId)
+          return true
         }
       } else {
+        // Profile exists
+        console.log('[Auth] ensureProfile: Profile already exists', existingProfile.id)
         // Check for ID mismatch
         if (existingProfile.id !== userId) {
-          setError('Profile ID mismatch! Auth user.id does not match profiles.id.')
           console.error('[Auth] Profile ID mismatch:', {
             authUserId: userId,
             profileId: existingProfile.id,
           })
         }
+        return true
       }
     } catch (err) {
-      setError('Error ensuring profile exists. See console for details.')
       console.error('[Auth] ensureProfile: error', err)
+      return false
     }
   }
 
@@ -98,19 +109,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle() // Use maybeSingle to avoid error on 0 rows
+
       console.log('[Auth] Supabase profile fetch result:', { data, error })
 
       if (error) {
+        // Don't set error state for profile fetch failures - just log them
         if (
           typeof error.message === 'string' &&
           error.message.includes("Could not find the table 'public.profiles'")
         ) {
-          setError('Profiles table missing. Did you run supabase/schema.sql?')
           console.warn('[Auth] profiles table missing. Did you run supabase/schema.sql?')
+        } else {
+          console.error('[Auth] Error fetching profile:', error)
         }
-        setError('Error fetching profile. See console for details.')
-        console.error('[Auth] Error fetching profile:', error)
         setProfile(null)
         return
       }
@@ -121,20 +137,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(profileData)
         // Check for ID mismatch
         if (profileData.id !== userId) {
-          setError('Profile ID mismatch! Auth user.id does not match profiles.id.')
           console.error('[Auth] Profile ID mismatch:', {
             authUserId: userId,
             profileId: profileData.id,
           })
         }
       } else {
-        setError('No profile data found for user. Please contact support.')
         console.warn('[Auth] No profile data found for user:', userId)
         setProfile(null)
       }
     } catch (error) {
-      setError('Error fetching profile. See console for details.')
-      console.error('Error fetching profile:', error)
+      console.error('[Auth] Error fetching profile:', error)
       setProfile(null)
     }
   }
@@ -164,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } = await supabase.auth.getSession()
         console.log('[Auth] restoreSession: session', session, sessionError)
         if (sessionError) {
-          setError('Session restoration failed. Please log in again.')
+          console.error('[Auth] Session restoration failed:', sessionError)
           setUser(null)
           setProfile(null)
           profileCacheRef.current.clear()
@@ -174,7 +187,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         if (session?.user) {
           setUser(session.user)
-          await ensureProfile(session.user.id, session.user.email || '')
+          const profileEnsured = await ensureProfile(session.user.id, session.user.email || '')
+          if (profileEnsured) {
+            // Small delay to let database trigger complete if profile was just created
+            await new Promise((resolve) => setTimeout(resolve, 100))
+          }
           await fetchProfile(session.user.id)
         } else {
           setUser(null)
@@ -182,11 +199,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           profileCacheRef.current.clear()
         }
       } catch (error) {
-        setError('Error restoring session. Please log in again.')
+        console.error('[Auth] restoreSession error:', error)
         setUser(null)
         setProfile(null)
         profileCacheRef.current.clear()
-        console.error('[Auth] restoreSession error:', error)
       } finally {
         setLoading(false)
         initializingRef.current = false
@@ -210,7 +226,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[Auth] onAuthStateChange:', { event, session })
       if (session?.user) {
         setUser(session.user)
-        await ensureProfile(session.user.id, session.user.email || '')
+        const profileEnsured = await ensureProfile(session.user.id, session.user.email || '')
+        if (profileEnsured) {
+          // Small delay to let database trigger complete if profile was just created
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        }
         await fetchProfile(session.user.id)
       } else {
         setUser(null)
