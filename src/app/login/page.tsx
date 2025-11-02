@@ -32,8 +32,16 @@ function LoginForm() {
   useEffect(() => {
     // Check for error in URL params
     const errorParam = searchParams.get('error')
+    const errorDetails = searchParams.get('details')
+    
     if (errorParam) {
-      setError(decodeURIComponent(errorParam))
+      const errorMessage = errorDetails 
+        ? `${decodeURIComponent(errorParam)}: ${decodeURIComponent(errorDetails)}`
+        : decodeURIComponent(errorParam)
+      setError(errorMessage)
+      
+      // Log the error for debugging
+      console.error('[Login] OAuth error:', errorParam, errorDetails)
     }
 
     // Check for success message
@@ -140,7 +148,18 @@ function LoginForm() {
           <form className="space-y-6" onSubmit={handleEmailLogin}>
             {error && (
               <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-sm text-red-700 font-semibold mb-1">Authentication Error</p>
+                <p className="text-sm text-red-600">{error}</p>
+                <button 
+                  type="button"
+                  className="mt-3 text-sm text-orange-600 hover:text-orange-700 font-semibold underline" 
+                  onClick={() => {
+                    setError('')
+                    window.history.replaceState({}, '', '/login')
+                  }}
+                >
+                  Dismiss
+                </button>
               </div>
             )}
 
