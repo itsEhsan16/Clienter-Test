@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
     // Create response first so we can set cookies on it
     const response = NextResponse.redirect(new URL('/dashboard', req.url))
-    
+
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -41,10 +41,12 @@ export async function GET(req: NextRequest) {
 
     console.log('[OAuth] Exchanging code for session...')
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-    
+
     if (error) {
       console.error('[OAuth] API code exchange failed:', error.message, error)
-      return NextResponse.redirect(new URL('/login?error=oauth_failed&details=' + encodeURIComponent(error.message), req.url))
+      return NextResponse.redirect(
+        new URL('/login?error=oauth_failed&details=' + encodeURIComponent(error.message), req.url)
+      )
     }
 
     if (!data.session) {
@@ -53,11 +55,16 @@ export async function GET(req: NextRequest) {
     }
 
     console.log('[OAuth] Session created successfully for user:', data.session.user.email)
-    
+
     // Return response with cookies already set
     return response
   } catch (e: any) {
     console.error('[OAuth] API callback error:', e?.message || e, e)
-    return NextResponse.redirect(new URL('/login?error=unexpected_error&details=' + encodeURIComponent(e?.message || 'Unknown'), req.url))
+    return NextResponse.redirect(
+      new URL(
+        '/login?error=unexpected_error&details=' + encodeURIComponent(e?.message || 'Unknown'),
+        req.url
+      )
+    )
   }
 }
