@@ -27,7 +27,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     console.log('[Dashboard] useEffect: authLoading', authLoading, 'user', user)
-    
+
     // If auth is still initializing, show loader
     if (authLoading) {
       setIsLoading(true)

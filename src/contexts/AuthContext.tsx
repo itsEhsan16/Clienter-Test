@@ -173,18 +173,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const restoreSession = async () => {
       try {
         console.log('[Auth] Starting session restoration...')
-        
+
         // First, wait a moment for any pending auth state changes from callback
         await new Promise((resolve) => setTimeout(resolve, 100))
-        
+
         // Try to restore session from cookies
         const {
           data: { session },
           error: sessionError,
         } = await supabase.auth.getSession()
-        
-        console.log('[Auth] restoreSession: session exists?', !!session, 'userId:', session?.user?.id, 'error:', sessionError)
-        
+
+        console.log(
+          '[Auth] restoreSession: session exists?',
+          !!session,
+          'userId:',
+          session?.user?.id,
+          'error:',
+          sessionError
+        )
+
         if (sessionError) {
           console.error('[Auth] Session restoration failed:', sessionError)
           setUser(null)
@@ -194,7 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           initializingRef.current = false
           return
         }
-        
+
         if (session?.user) {
           console.log('[Auth] Session found for user:', session.user.email)
           setUser(session.user)
@@ -236,8 +243,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
-      console.log('[Auth] onAuthStateChange event:', event, 'has session:', !!session, 'userId:', session?.user?.id)
-      
+      console.log(
+        '[Auth] onAuthStateChange event:',
+        event,
+        'has session:',
+        !!session,
+        'userId:',
+        session?.user?.id
+      )
+
       try {
         if (session?.user) {
           console.log('[Auth] User authenticated via state change:', session.user.email)
@@ -257,7 +271,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error('[Auth] Error handling auth state change:', err)
       }
-      
+
       if (loading) {
         setLoading(false)
         initializingRef.current = false
