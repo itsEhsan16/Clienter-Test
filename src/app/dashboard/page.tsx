@@ -24,9 +24,17 @@ export default function DashboardPage() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [hasFetched, setHasFetched] = useState(false)
 
   useEffect(() => {
-    console.log('[Dashboard] useEffect: authLoading', authLoading, 'user', user)
+    console.log(
+      '[Dashboard] useEffect: authLoading',
+      authLoading,
+      'user',
+      user,
+      'hasFetched',
+      hasFetched
+    )
 
     // If auth is still initializing, show loader
     if (authLoading) {
@@ -37,6 +45,13 @@ export default function DashboardPage() {
     // If auth finished but there's no user, clear loading
     if (!user || !supabase) {
       console.log('[Dashboard] No user or supabase found after auth loading completed')
+      setIsLoading(false)
+      return
+    }
+
+    // Skip if we've already fetched data
+    if (hasFetched) {
+      console.log('[Dashboard] Data already fetched, skipping refetch')
       setIsLoading(false)
       return
     }
@@ -257,6 +272,9 @@ export default function DashboardPage() {
         if ((clientsResult.data || []).length === 0) {
           setShowOnboarding(true)
         }
+
+        // Mark as fetched to prevent refetching
+        setHasFetched(true)
       } catch (err: any) {
         clearTimeout(timeoutId)
         console.error('[Dashboard] Error fetching dashboard data:', err)
@@ -271,7 +289,7 @@ export default function DashboardPage() {
     }
 
     fetchDashboardData()
-  }, [user, authLoading])
+  }, [user, authLoading, supabase, hasFetched])
 
   // Show skeleton while loading
   if (authLoading || isLoading) {
