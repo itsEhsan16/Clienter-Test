@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useRef, useMemo } from 'react'
 import { User, type AuthChangeEvent, type Session } from '@supabase/supabase-js'
-import { createBrowserClient } from '@/lib/supabase'
+import { supabase as supabaseClient } from '@/lib/supabase'
 import { Profile } from '@/types/database'
 
 interface AuthContextType {
@@ -44,17 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Profile cache
   const profileCacheRef = useRef<Map<string, Profile>>(new Map())
 
-  const [supabase] = useState(() => {
-    try {
-      const client = createBrowserClient()
-      console.log('[AuthContext] Supabase client initialized')
-      return client
-    } catch (err) {
-      console.error('[AuthContext] Failed to initialize Supabase:', err)
-      setError(err instanceof Error ? err.message : 'Failed to initialize Supabase')
-      return null
-    }
-  })
+  // Use the module-level supabase client
+  const supabase = supabaseClient
 
   const fetchProfile = async (userId: string) => {
     if (!supabase) return
@@ -250,7 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(
     () => ({ user, profile, loading, supabase, signOut, refreshProfile }),
-    [user, profile, loading, supabase]
+    [user, profile, loading]
   )
 
   // Show error if Supabase is not configured

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { UserPlus, Loader2, Mail } from 'lucide-react'
 
@@ -14,7 +14,6 @@ export default function SignupPage() {
   const [error, setError] = useState('')
   const [emailSent, setEmailSent] = useState(false)
   const router = useRouter()
-  const supabase = createBrowserClient()
 
   // Check if user is already logged in
   useEffect(() => {

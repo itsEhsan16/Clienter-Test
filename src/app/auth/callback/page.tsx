@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 export default function AuthCallback() {
   const router = useRouter()
@@ -13,8 +13,6 @@ export default function AuthCallback() {
       try {
         console.log('[Auth Callback] Starting OAuth callback handling...')
         console.log('[Auth Callback] Current URL:', window.location.href)
-
-        const supabase = createBrowserClient()
 
         // Extract code and error from URL
         const hashParams = new URLSearchParams(window.location.hash.substring(1))
