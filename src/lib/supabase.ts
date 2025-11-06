@@ -1,6 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { createBrowserClient as createBrowserSupabaseClient } from '@supabase/ssr'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 // Singleton instance
 let supabaseInstance: SupabaseClient | null = null
@@ -20,10 +19,6 @@ export const createBrowserClient = () => {
     '[Supabase Client] Anon Key:',
     supabaseKey ? 'SET (length: ' + supabaseKey.length + ')' : 'MISSING'
   )
-  console.log(
-    '[Supabase Client] Environment:',
-    typeof window !== 'undefined' ? 'browser' : 'server'
-  )
 
   if (!supabaseUrl || !supabaseKey) {
     console.error('❌ SUPABASE NOT CONFIGURED!')
@@ -39,9 +34,9 @@ export const createBrowserClient = () => {
     throw new Error('Please update Supabase credentials in .env.local')
   }
 
-  console.log('[Supabase Client] Creating new client instance')
+  console.log('[Supabase Client] Creating new browser client with @supabase/ssr')
 
-  // Use @supabase/ssr for proper browser client with cookie handling
+  // Use @supabase/ssr's createBrowserClient - it handles PKCE properly
   supabaseInstance = createBrowserSupabaseClient(supabaseUrl, supabaseKey, {
     cookies: {
       get(name: string) {
@@ -55,8 +50,7 @@ export const createBrowserClient = () => {
         if (typeof document === 'undefined') return
         let cookie = `${name}=${value}`
         if (options?.maxAge) cookie += `; max-age=${options.maxAge}`
-        if (options?.path) cookie += `; path=${options.path}`
-        if (options?.domain) cookie += `; domain=${options.domain}`
+        cookie += `; path=/`
         if (options?.sameSite) cookie += `; samesite=${options.sameSite}`
         if (options?.secure) cookie += '; secure'
         document.cookie = cookie

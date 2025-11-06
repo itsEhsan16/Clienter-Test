@@ -32,6 +32,22 @@ export default function MeetingsPage() {
       setIsLoading(true)
 
       try {
+        // Verify session first
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        console.log('[Meetings] Session check:', {
+          hasSession: !!session,
+          userId: session?.user?.id,
+          accessToken: session?.access_token ? 'present' : 'missing',
+        })
+
+        if (!session || !session.access_token) {
+          console.error('[Meetings] No valid session found')
+          setIsLoading(false)
+          return
+        }
+
         // Add timeout protection
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Fetch meetings timed out after 10 seconds')), 10000)
@@ -56,6 +72,13 @@ export default function MeetingsPage() {
         ])
 
         const [meetingsResult, clientsResult] = await Promise.race([fetchPromise, timeoutPromise])
+
+        console.log('[Meetings] Query results:', {
+          meetingsError: meetingsResult.error,
+          meetingsCount: meetingsResult.data?.length || 0,
+          clientsError: clientsResult.error,
+          clientsCount: clientsResult.data?.length || 0,
+        })
 
         if (meetingsResult.data) {
           setMeetings(meetingsResult.data as MeetingWithDetails[])

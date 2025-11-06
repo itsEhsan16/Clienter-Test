@@ -62,6 +62,7 @@ export default function DashboardPage() {
           userId: session?.user?.id,
           userIdMatch: session?.user?.id === user.id,
           error: sessionError,
+          accessToken: session?.access_token ? 'present' : 'missing',
         })
 
         if (!session) {
@@ -77,6 +78,14 @@ export default function DashboardPage() {
             sessionUserId: session.user.id,
           })
           setError('Session user mismatch. Please refresh the page.')
+          setIsLoading(false)
+          return
+        }
+
+        // Verify access token is present
+        if (!session.access_token) {
+          console.error('[Dashboard] No access token in session!')
+          setError('Authentication token missing. Please log out and log in again.')
           setIsLoading(false)
           return
         }
@@ -133,7 +142,16 @@ export default function DashboardPage() {
               .select('*')
               .eq('user_id', user.id)
               .order('created_at', { ascending: false })
-              .limit(5),
+              .limit(5)
+              .then((result: any) => {
+                console.log('[Dashboard] Clients query result:', {
+                  error: result.error,
+                  count: result.data?.length || 0,
+                  status: result.status,
+                  statusText: result.statusText,
+                })
+                return result
+              }),
 
             supabase
               .from('reminders')
@@ -142,23 +160,51 @@ export default function DashboardPage() {
               .eq('is_dismissed', false)
               .gte('remind_at', new Date().toISOString())
               .order('remind_at', { ascending: true })
-              .limit(5),
+              .limit(5)
+              .then((result: any) => {
+                console.log('[Dashboard] Reminders query result:', {
+                  error: result.error,
+                  count: result.data?.length || 0,
+                })
+                return result
+              }),
 
             supabase
               .from('clients')
               .select('*', { count: 'exact', head: true })
-              .eq('user_id', user.id),
+              .eq('user_id', user.id)
+              .then((result: any) => {
+                console.log('[Dashboard] Clients count result:', {
+                  error: result.error,
+                  count: result.count,
+                })
+                return result
+              }),
 
             supabase
               .from('clients')
               .select('total_amount, advance_paid, status')
               .eq('user_id', user.id)
-              .in('status', ['ongoing', 'potential']),
+              .in('status', ['ongoing', 'potential'])
+              .then((result: any) => {
+                console.log('[Dashboard] All clients result:', {
+                  error: result.error,
+                  count: result.data?.length || 0,
+                })
+                return result
+              }),
 
             supabase
               .from('meetings')
               .select('*', { count: 'exact', head: true })
-              .eq('user_id', user.id),
+              .eq('user_id', user.id)
+              .then((result: any) => {
+                console.log('[Dashboard] Meetings count result:', {
+                  error: result.error,
+                  count: result.count,
+                })
+                return result
+              }),
           ]),
           10000,
           'Dashboard data fetch'

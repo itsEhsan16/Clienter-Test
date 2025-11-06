@@ -55,6 +55,22 @@ export default function ClientsPage() {
       setError(null)
 
       try {
+        // Verify session first
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        console.log('[Clients] Session check:', {
+          hasSession: !!session,
+          userId: session?.user?.id,
+          accessToken: session?.access_token ? 'present' : 'missing',
+        })
+
+        if (!session || !session.access_token) {
+          setError('No active session. Please log in again.')
+          setIsLoading(false)
+          return
+        }
+
         // Add timeout protection
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Fetch clients timed out after 10 seconds')), 10000)
@@ -68,6 +84,11 @@ export default function ClientsPage() {
           .order('order', { ascending: true })
 
         const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
+
+        console.log('[Clients] Query result:', {
+          error: error,
+          count: data?.length || 0,
+        })
 
         if (error) {
           setError('Failed to load clients: ' + error.message)

@@ -36,7 +36,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Prevent multiple simultaneous initializations
   const initializingRef = useRef(false)
+  const initializedRef = useRef(false)
+
+  // Profile cache
   const profileCacheRef = useRef<Map<string, Profile>>(new Map())
 
   const [supabase] = useState(() => {
@@ -51,53 +56,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   })
 
-  // Helper to ensure profile exists for user
-  const ensureProfile = async (userId: string, email: string) => {
-    if (!supabase) return false
-    try {
-      const { data: existingProfile, error: fetchError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle() // Use maybeSingle instead of single to avoid error on 0 rows
-
-      console.log('[Auth] ensureProfile: fetch result', { userId, existingProfile, fetchError })
-
-      if (fetchError) {
-        console.error('[Auth] ensureProfile: error fetching profile', fetchError)
-        return false
-      }
-
-      if (!existingProfile) {
-        console.log('[Auth] ensureProfile: Creating new profile for user', userId)
-        const { error: insertError } = await supabase
-          .from('profiles')
-          .insert([{ id: userId, email, full_name: '', currency: 'INR' }])
-        if (insertError) {
-          console.error('[Auth] ensureProfile: error inserting profile', insertError)
-          return false
-        } else {
-          console.log('[Auth] ensureProfile: created missing profile for user', userId)
-          return true
-        }
-      } else {
-        // Profile exists
-        console.log('[Auth] ensureProfile: Profile already exists', existingProfile.id)
-        // Check for ID mismatch
-        if (existingProfile.id !== userId) {
-          console.error('[Auth] Profile ID mismatch:', {
-            authUserId: userId,
-            profileId: existingProfile.id,
-          })
-        }
-        return true
-      }
-    } catch (err) {
-      console.error('[Auth] ensureProfile: error', err)
-      return false
-    }
-  }
-
   const fetchProfile = async (userId: string) => {
     if (!supabase) return
     console.log('[Auth] Fetching profile for userId:', userId)
@@ -105,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check cache first
     const cached = profileCacheRef.current.get(userId)
     if (cached) {
-      console.log('[Auth] Profile found in cache:', cached)
+      console.log('[Auth] Profile found in cache')
       setProfile(cached)
       return
     }
@@ -115,20 +73,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .maybeSingle() // Use maybeSingle to avoid error on 0 rows
-
-      console.log('[Auth] Supabase profile fetch result:', { data, error })
+        .maybeSingle()
 
       if (error) {
-        // Don't set error state for profile fetch failures - just log them
-        if (
-          typeof error.message === 'string' &&
-          error.message.includes("Could not find the table 'public.profiles'")
-        ) {
-          console.warn('[Auth] profiles table missing. Did you run supabase/schema.sql?')
-        } else {
-          console.error('[Auth] Error fetching profile:', error)
-        }
+        console.error('[Auth] Error fetching profile:', error)
         setProfile(null)
         return
       }
@@ -137,34 +85,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const profileData = data as Profile
         profileCacheRef.current.set(userId, profileData)
         setProfile(profileData)
-        // Check for ID mismatch
-        if (profileData.id !== userId) {
-          console.error('[Auth] Profile ID mismatch:', {
-            authUserId: userId,
-            profileId: profileData.id,
-          })
-        }
       } else {
-        console.warn('[Auth] No profile data found for user:', userId)
+        console.warn('[Auth] No profile found for user:', userId)
         setProfile(null)
       }
     } catch (error) {
-      console.error('[Auth] Error fetching profile:', error)
+      console.error('[Auth] Profile fetch exception:', error)
       setProfile(null)
     }
   }
 
   const refreshProfile = async () => {
     if (user) {
-      // Clear cache for this user
       profileCacheRef.current.delete(user.id)
       await fetchProfile(user.id)
     }
   }
 
   useEffect(() => {
-    if (!supabase || initializingRef.current) {
-      if (!supabase) setLoading(false)
+    if (!supabase) {
+      setLoading(false)
+      return
+    }
+
+    // Prevent multiple simultaneous initializations
+    if (initializingRef.current || initializedRef.current) {
+      console.log('[Auth] Skipping initialization - already initialized or in progress')
       return
     }
 
@@ -174,23 +120,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         console.log('[Auth] Starting session restoration...')
 
-        // First, wait a moment for any pending auth state changes from callback
-        await new Promise((resolve) => setTimeout(resolve, 100))
-
-        // Try to restore session from cookies
+        // Get the current session
         const {
           data: { session },
           error: sessionError,
         } = await supabase.auth.getSession()
 
-        console.log(
-          '[Auth] restoreSession: session exists?',
-          !!session,
-          'userId:',
-          session?.user?.id,
-          'error:',
-          sessionError
-        )
+        console.log('[Auth] Session check:', {
+          hasSession: !!session,
+          userId: session?.user?.id,
+          accessToken: session?.access_token ? 'present' : 'missing',
+          error: sessionError,
+        })
 
         if (sessionError) {
           console.error('[Auth] Session restoration failed:', sessionError)
@@ -198,18 +139,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(null)
           profileCacheRef.current.clear()
           setLoading(false)
+          initializedRef.current = true
           initializingRef.current = false
           return
         }
 
         if (session?.user) {
           console.log('[Auth] Session found for user:', session.user.email)
-          setUser(session.user)
-          const profileEnsured = await ensureProfile(session.user.id, session.user.email || '')
-          if (profileEnsured) {
-            // Small delay to let database trigger complete if profile was just created
-            await new Promise((resolve) => setTimeout(resolve, 100))
+
+          // Verify the session has an access token
+          if (!session.access_token) {
+            console.error('[Auth] Session exists but missing access token!')
+            setUser(null)
+            setProfile(null)
+            profileCacheRef.current.clear()
+            setLoading(false)
+            initializedRef.current = true
+            initializingRef.current = false
+            return
           }
+
+          setUser(session.user)
+          // Fetch profile (database trigger should have created it)
           await fetchProfile(session.user.id)
         } else {
           console.log('[Auth] No session found during restoration')
@@ -224,20 +175,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profileCacheRef.current.clear()
       } finally {
         setLoading(false)
+        initializedRef.current = true
         initializingRef.current = false
       }
     }
 
     restoreSession()
 
-    // Timeout for faster failure recovery (3 seconds on Vercel)
+    // Timeout for faster failure recovery
     const timeoutId = setTimeout(() => {
       if (loading && initializingRef.current) {
         console.warn('[Auth] Session restoration timeout - marking as initialized')
         setLoading(false)
+        initializedRef.current = true
         initializingRef.current = false
       }
-    }, 3000)
+    }, 5000)
 
     // Listen for auth state changes - this is critical for catching session updates
     const {
@@ -256,11 +209,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           console.log('[Auth] User authenticated via state change:', session.user.email)
           setUser(session.user)
-          const profileEnsured = await ensureProfile(session.user.id, session.user.email || '')
-          if (profileEnsured) {
-            // Small delay to let database trigger complete if profile was just created
-            await new Promise((resolve) => setTimeout(resolve, 100))
-          }
           await fetchProfile(session.user.id)
         } else {
           console.log('[Auth] User logged out via state change')
@@ -274,6 +222,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (loading) {
         setLoading(false)
+        initializedRef.current = true
         initializingRef.current = false
       }
     })

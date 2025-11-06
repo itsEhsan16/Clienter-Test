@@ -16,65 +16,88 @@ export default function AuthCallback() {
 
         const supabase = createBrowserClient()
 
-        // Extract code from URL (can be in search or hash)
-        const searchParams = new URLSearchParams(window.location.search)
+        // Extract code and error from URL
         const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const searchParams = new URLSearchParams(window.location.search)
 
         const code = searchParams.get('code') || hashParams.get('code')
-        console.log('[Auth Callback] Extracted code:', code ? 'Present' : 'Missing')
+        const errorCode = searchParams.get('error') || hashParams.get('error')
+        const errorDescription =
+          searchParams.get('error_description') || hashParams.get('error_description')
 
+        console.log('[Auth Callback] Params:', {
+          hasCode: !!code,
+          errorCode,
+          errorDescription,
+        })
+
+        // Handle OAuth errors
+        if (errorCode) {
+          console.error('[Auth Callback] OAuth error:', errorCode, errorDescription)
+          setError(errorDescription || errorCode)
+          setTimeout(() => {
+            router.push(
+              `/login?error=oauth_failed&details=${encodeURIComponent(
+                errorDescription || errorCode
+              )}`
+            )
+          }, 2000)
+          return
+        }
+
+        // Handle OAuth code exchange
         if (code) {
           console.log('[Auth Callback] Exchanging code for session...')
-          const { data: exchangeData, error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(code)
+          const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
           if (exchangeError) {
             console.error('[Auth Callback] Code exchange error:', exchangeError)
             setError(exchangeError.message)
             setTimeout(() => {
               router.push(
-                '/login?error=oauth_failed&details=' + encodeURIComponent(exchangeError.message)
+                `/login?error=oauth_failed&details=${encodeURIComponent(exchangeError.message)}`
               )
             }, 2000)
             return
           }
 
-          console.log('[Auth Callback] Code exchange successful')
-        } else {
-          console.log('[Auth Callback] No code in URL, checking existing session...')
+          if (data.session) {
+            console.log(
+              '[Auth Callback] Session created successfully for user:',
+              data.session.user.email
+            )
+            // Redirect to dashboard
+            router.push('/dashboard')
+            router.refresh()
+            return
+          }
         }
 
-        // Now get the session
+        // If no code and no error, check for existing session
         const {
           data: { session },
           error: sessionError,
         } = await supabase.auth.getSession()
 
         if (sessionError) {
-          console.error('[Auth Callback] Error getting session:', sessionError)
+          console.error('[Auth Callback] Session check error:', sessionError)
           setError(sessionError.message)
           setTimeout(() => {
-            router.push(
-              '/login?error=oauth_failed&details=' + encodeURIComponent(sessionError.message)
-            )
+            router.push('/login?error=session_check_failed')
           }, 2000)
           return
         }
 
-        if (!session) {
-          console.error('[Auth Callback] No session after callback')
-          setError('No session created')
+        if (session) {
+          console.log('[Auth Callback] Existing session found, redirecting to dashboard')
+          router.push('/dashboard')
+          router.refresh()
+        } else {
+          console.warn('[Auth Callback] No code, no error, and no session - redirecting to login')
           setTimeout(() => {
             router.push('/login?error=no_session')
           }, 2000)
-          return
         }
-
-        console.log('[Auth Callback] Session created successfully for user:', session.user.email)
-
-        // Redirect to dashboard
-        router.push('/dashboard')
-        router.refresh()
       } catch (e: any) {
         console.error('[Auth Callback] Unexpected error:', e)
         setError(e?.message || 'Unknown error')
@@ -94,7 +117,7 @@ export default function AuthCallback() {
           <span className="text-white font-bold text-2xl">C</span>
         </div>
         <h1 className="text-2xl font-bold text-white mb-2">
-          {error ? 'Authentication Failed' : 'Signing you in...'}
+          {error ? 'Authentication Failed' : 'Completing sign in...'}
         </h1>
         {error ? (
           <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 mt-4">
