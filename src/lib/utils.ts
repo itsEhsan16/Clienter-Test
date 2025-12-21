@@ -38,10 +38,8 @@ const downloadBlob = (blob: Blob, filename: string) => {
 
 export const getStatusColor = (status: string): string => {
   switch (status) {
-    case 'uncertain':
-      return 'bg-gray-100 text-gray-800'
-    case 'potential':
-      return 'bg-yellow-100 text-yellow-800'
+    case 'new':
+      return 'bg-purple-100 text-purple-800'
     case 'ongoing':
       return 'bg-green-100 text-green-800'
     case 'completed':
@@ -53,10 +51,8 @@ export const getStatusColor = (status: string): string => {
 
 export const getClientStatusColor = (status: string): string => {
   switch (status) {
-    case 'uncertain':
-      return 'bg-gray-100 text-gray-800'
-    case 'potential':
-      return 'bg-yellow-100 text-yellow-800'
+    case 'new':
+      return 'bg-purple-100 text-purple-800'
     case 'ongoing':
       return 'bg-green-100 text-green-800'
     case 'completed':
@@ -68,10 +64,8 @@ export const getClientStatusColor = (status: string): string => {
 
 export const getClientStatusLabel = (status: string): string => {
   switch (status) {
-    case 'uncertain':
-      return 'Uncertain'
-    case 'potential':
-      return 'Potential'
+    case 'new':
+      return 'New'
     case 'ongoing':
       return 'Ongoing'
     case 'completed':

@@ -30,7 +30,7 @@ export default function ClientDetailPage() {
     project_description: '',
     total_amount: '',
     advance_paid: '',
-    status: 'uncertain' as 'uncertain' | 'potential' | 'ongoing' | 'completed',
+    status: 'new' as 'new' | 'ongoing' | 'completed',
   })
 
   useEffect(() => {
@@ -223,17 +223,12 @@ export default function ClientDetailPage() {
                     onChange={(e) =>
                       setEditData({
                         ...editData,
-                        status: e.target.value as
-                          | 'uncertain'
-                          | 'potential'
-                          | 'ongoing'
-                          | 'completed',
+                        status: e.target.value as 'new' | 'ongoing' | 'completed',
                       })
                     }
                     className="input"
                   >
-                    <option value="uncertain">Uncertain</option>
-                    <option value="potential">Potential</option>
+                    <option value="new">New</option>
                     <option value="ongoing">Ongoing</option>
                     <option value="completed">Completed</option>
                   </select>

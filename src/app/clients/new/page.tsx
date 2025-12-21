@@ -20,7 +20,7 @@ export default function NewClientPage() {
     project_description: '',
     total_amount: '',
     advance_paid: '',
-    status: 'uncertain' as 'uncertain' | 'potential' | 'ongoing' | 'completed',
+    status: 'new' as 'new' | 'ongoing' | 'completed',
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -247,8 +247,7 @@ export default function NewClientPage() {
                   className="input"
                   disabled={loading}
                 >
-                  <option value="uncertain">Uncertain</option>
-                  <option value="potential">Potential</option>
+                  <option value="new">New</option>
                   <option value="ongoing">Ongoing</option>
                   <option value="completed">Completed</option>
                 </select>

@@ -6,21 +6,48 @@ import { TopBar } from '@/components/TopBar'
 import { DashboardSkeleton } from '@/components/SkeletonLoaders'
 import { Client, ReminderWithMeeting } from '@/types/database'
 import { formatRelativeTime, formatTimeAgo } from '@/lib/date-utils'
-import { formatCurrency } from '@/lib/utils'
-import { Plus, Users, Calendar, Clock, TrendingUp, ArrowRight } from 'lucide-react'
+import { formatCurrency, getClientStatusColor, getClientStatusLabel } from '@/lib/utils'
+import {
+  Plus,
+  Users,
+  Calendar,
+  Clock,
+  TrendingUp,
+  ArrowRight,
+  DollarSign,
+  AlertCircle,
+  CheckCircle,
+  Briefcase,
+} from 'lucide-react'
 import Link from 'next/link'
+
+interface MonthlyStats {
+  month: string
+  revenue: number
+  paid: number
+  pending: number
+  clientCount: number
+}
 
 export default function DashboardPage() {
   const { user, profile, loading: authLoading, supabase } = useAuth()
   const [recentClients, setRecentClients] = useState<Client[]>([])
   const [upcomingReminders, setUpcomingReminders] = useState<ReminderWithMeeting[]>([])
   const [stats, setStats] = useState({
-    clients: 0,
+    newClients: 0,
+    ongoingClients: 0,
+    completedClients: 0,
+    totalClients: 0,
     meetings: 0,
     totalRevenue: 0,
     totalPaid: 0,
-    totalDue: 0,
+    totalPending: 0,
+    monthlyRevenue: 0,
+    monthlyPaid: 0,
+    monthlyPending: 0,
+    monthlyNewClients: 0,
   })
+  const [monthlyData, setMonthlyData] = useState<MonthlyStats[]>([])
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -198,9 +225,8 @@ export default function DashboardPage() {
 
             supabase
               .from('clients')
-              .select('total_amount, advance_paid, status')
+              .select('total_amount, advance_paid, status, created_at')
               .eq('user_id', user.id)
-              .in('status', ['ongoing', 'potential'])
               .then((result: any) => {
                 console.log('[Dashboard] All clients result:', {
                   error: result.error,
@@ -250,23 +276,90 @@ export default function DashboardPage() {
           console.error('[Dashboard] Meetings count error:', meetingsCountResult.error)
         }
 
-        // Calculate totals
+        // Calculate totals and statistics
         const allClients = allClientsResult.data || []
+
+        // Status-based counts
+        const newClients = allClients.filter((c: any) => c.status === 'new').length
+        const ongoingClients = allClients.filter((c: any) => c.status === 'ongoing').length
+        const completedClients = allClients.filter((c: any) => c.status === 'completed').length
+
+        // Overall totals (all statuses)
         const totalRevenue = allClients.reduce(
           (sum: number, c: any) => sum + (c.total_amount || 0),
           0
         )
         const totalPaid = allClients.reduce((sum: number, c: any) => sum + (c.advance_paid || 0), 0)
-        const totalDue = totalRevenue - totalPaid
+        const totalPending = totalRevenue - totalPaid
+
+        // Monthly calculations (current month)
+        const now = new Date()
+        const currentMonth = now.getMonth()
+        const currentYear = now.getFullYear()
+        const monthlyClients = allClients.filter((c: any) => {
+          const createdDate = new Date(c.created_at)
+          return (
+            createdDate.getMonth() === currentMonth && createdDate.getFullYear() === currentYear
+          )
+        })
+
+        const monthlyRevenue = monthlyClients.reduce(
+          (sum: number, c: any) => sum + (c.total_amount || 0),
+          0
+        )
+        const monthlyPaid = monthlyClients.reduce(
+          (sum: number, c: any) => sum + (c.advance_paid || 0),
+          0
+        )
+        const monthlyPending = monthlyRevenue - monthlyPaid
+
+        // Calculate monthly data for the last 6 months
+        const monthlyDataCalc: MonthlyStats[] = []
+        for (let i = 5; i >= 0; i--) {
+          const date = new Date(currentYear, currentMonth - i, 1)
+          const month = date.toLocaleString('default', { month: 'short' })
+          const year = date.getFullYear()
+          const targetMonth = date.getMonth()
+
+          const clientsInMonth = allClients.filter((c: any) => {
+            const createdDate = new Date(c.created_at)
+            return createdDate.getMonth() === targetMonth && createdDate.getFullYear() === year
+          })
+
+          const revenue = clientsInMonth.reduce(
+            (sum: number, c: any) => sum + (c.total_amount || 0),
+            0
+          )
+          const paid = clientsInMonth.reduce(
+            (sum: number, c: any) => sum + (c.advance_paid || 0),
+            0
+          )
+
+          monthlyDataCalc.push({
+            month: `${month} ${year}`,
+            revenue,
+            paid,
+            pending: revenue - paid,
+            clientCount: clientsInMonth.length,
+          })
+        }
 
         setRecentClients(clientsResult.data || [])
         setUpcomingReminders(remindersResult.data || [])
+        setMonthlyData(monthlyDataCalc)
         setStats({
-          clients: clientsCountResult.count || 0,
+          newClients,
+          ongoingClients,
+          completedClients,
+          totalClients: clientsCountResult.count || 0,
           meetings: meetingsCountResult.count || 0,
           totalRevenue,
           totalPaid,
-          totalDue,
+          totalPending,
+          monthlyRevenue,
+          monthlyPaid,
+          monthlyPending,
+          monthlyNewClients: monthlyClients.length,
         })
 
         if ((clientsResult.data || []).length === 0) {
@@ -353,42 +446,241 @@ export default function DashboardPage() {
 
         {/* testing for commit */}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="stat-card group">
+        {/* Client Status Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="stat-card group hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center group-hover:bg-purple-500 transition-colors">
+                <AlertCircle className="w-6 h-6 text-purple-600 group-hover:text-white transition-colors" />
+              </div>
+              <span className="text-3xl font-bold text-gray-900">{stats.newClients}</span>
+            </div>
+            <p className="text-sm font-semibold text-gray-600">New Clients</p>
+            <p className="text-xs text-gray-400 mt-1">Inquiries & leads</p>
+          </div>
+
+          <div className="stat-card group hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center group-hover:bg-green-500 transition-colors">
+                <Briefcase className="w-6 h-6 text-green-600 group-hover:text-white transition-colors" />
+              </div>
+              <span className="text-3xl font-bold text-gray-900">{stats.ongoingClients}</span>
+            </div>
+            <p className="text-sm font-semibold text-gray-600">Ongoing Projects</p>
+            <p className="text-xs text-gray-400 mt-1">Active clients</p>
+          </div>
+
+          <div className="stat-card group hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-500 transition-colors">
+                <CheckCircle className="w-6 h-6 text-blue-600 group-hover:text-white transition-colors" />
+              </div>
+              <span className="text-3xl font-bold text-gray-900">{stats.completedClients}</span>
+            </div>
+            <p className="text-sm font-semibold text-gray-600">Completed Projects</p>
+            <p className="text-xs text-gray-400 mt-1">Finished work</p>
+          </div>
+
+          <div className="stat-card group hover:shadow-xl transition-all">
             <div className="flex items-center justify-between mb-4">
               <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center group-hover:bg-orange-500 transition-colors">
                 <Users className="w-6 h-6 text-orange-600 group-hover:text-white transition-colors" />
               </div>
-              <span className="text-3xl font-bold text-gray-900">{stats.clients}</span>
+              <span className="text-3xl font-bold text-gray-900">{stats.totalClients}</span>
             </div>
             <p className="text-sm font-semibold text-gray-600">Total Clients</p>
-          </div>
-
-          <div className="stat-card group">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-500 transition-colors">
-                <Calendar className="w-6 h-6 text-blue-600 group-hover:text-white transition-colors" />
-              </div>
-              <span className="text-3xl font-bold text-gray-900">{stats.meetings}</span>
-            </div>
-            <p className="text-sm font-semibold text-gray-600">Upcoming Meetings</p>
-          </div>
-
-          <div className="stat-card group">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center group-hover:bg-green-500 transition-colors">
-                <TrendingUp className="w-6 h-6 text-green-600 group-hover:text-white transition-colors" />
-              </div>
-              <span className="text-3xl font-bold text-gray-900">
-                {formatCurrency(stats.totalRevenue, profile?.currency || 'INR')}
-              </span>
-            </div>
-            <p className="text-sm font-semibold text-gray-600">Total Revenue</p>
+            <p className="text-xs text-gray-400 mt-1">All time</p>
           </div>
         </div>
 
+        {/* Revenue Analytics */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Total Revenue Overview */}
+          <div className="card">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center">
+                <DollarSign className="w-5 h-5 mr-2 text-green-600" />
+                Total Revenue Overview
+              </h2>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-600">Total Project Value</span>
+                    <span className="text-2xl font-bold text-gray-900">
+                      {formatCurrency(stats.totalRevenue, profile?.currency || 'INR')}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className="bg-gradient-to-r from-green-500 to-green-600 h-3 rounded-full transition-all"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-600">Amount Received</span>
+                    <span className="text-xl font-bold text-green-600">
+                      {formatCurrency(stats.totalPaid, profile?.currency || 'INR')}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-green-500 h-2 rounded-full transition-all"
+                      style={{
+                        width: `${
+                          stats.totalRevenue > 0 ? (stats.totalPaid / stats.totalRevenue) * 100 : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-600">Pending Amount</span>
+                    <span className="text-xl font-bold text-orange-600">
+                      {formatCurrency(stats.totalPending, profile?.currency || 'INR')}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-orange-500 h-2 rounded-full transition-all"
+                      style={{
+                        width: `${
+                          stats.totalRevenue > 0
+                            ? (stats.totalPending / stats.totalRevenue) * 100
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">Payment Completion</span>
+                    <span className="font-bold text-gray-900">
+                      {stats.totalRevenue > 0
+                        ? `${Math.round((stats.totalPaid / stats.totalRevenue) * 100)}%`
+                        : '0%'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Monthly Revenue */}
+          <div className="card">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center">
+                <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
+                This Month's Performance
+              </h2>
+            </div>
+            <div className="p-6">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">New Clients</p>
+                    <p className="text-3xl font-bold text-blue-600">{stats.monthlyNewClients}</p>
+                  </div>
+                  <div className="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <Users className="w-8 h-8 text-blue-600" />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                    <span className="text-sm font-medium text-gray-700">Revenue</span>
+                    <span className="text-lg font-bold text-green-600">
+                      {formatCurrency(stats.monthlyRevenue, profile?.currency || 'INR')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                    <span className="text-sm font-medium text-gray-700">Received</span>
+                    <span className="text-lg font-bold text-blue-600">
+                      {formatCurrency(stats.monthlyPaid, profile?.currency || 'INR')}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                    <span className="text-sm font-medium text-gray-700">Pending</span>
+                    <span className="text-lg font-bold text-orange-600">
+                      {formatCurrency(stats.monthlyPending, profile?.currency || 'INR')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Monthly Trend Chart */}
+        {monthlyData.length > 0 && (
+          <div className="card mb-8">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center">
+                <Calendar className="w-5 h-5 mr-2 text-orange-500" />
+                6-Month Revenue Trend
+              </h2>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                {monthlyData.map((data, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">{data.month}</span>
+                      <div className="flex items-center space-x-4 text-sm">
+                        <span className="text-gray-600">
+                          {data.clientCount} {data.clientCount === 1 ? 'client' : 'clients'}
+                        </span>
+                        <span className="font-bold text-gray-900">
+                          {formatCurrency(data.revenue, profile?.currency || 'INR')}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                      <div className="h-full flex">
+                        <div
+                          className="bg-green-500 h-2 transition-all"
+                          style={{
+                            width: `${data.revenue > 0 ? (data.paid / data.revenue) * 100 : 0}%`,
+                          }}
+                          title={`Paid: ${formatCurrency(data.paid, profile?.currency || 'INR')}`}
+                        />
+                        <div
+                          className="bg-orange-400 h-2 transition-all"
+                          style={{
+                            width: `${data.revenue > 0 ? (data.pending / data.revenue) * 100 : 0}%`,
+                          }}
+                          title={`Pending: ${formatCurrency(
+                            data.pending,
+                            profile?.currency || 'INR'
+                          )}`}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>Paid: {formatCurrency(data.paid, profile?.currency || 'INR')}</span>
+                      <span>
+                        Pending: {formatCurrency(data.pending, profile?.currency || 'INR')}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
           {/* Upcoming Reminders */}
           <div className="card">
             <div className="px-6 py-4 border-b border-gray-200">
@@ -483,10 +775,35 @@ export default function DashboardPage() {
                                 {client.project_description}
                               </p>
                             )}
+                            {client.total_amount && (
+                              <div className="flex items-center space-x-2 mt-1">
+                                <span className="text-xs font-medium text-green-600">
+                                  {formatCurrency(client.total_amount, profile?.currency || 'INR')}
+                                </span>
+                                {client.advance_paid && (
+                                  <span className="text-xs text-gray-500">
+                                    • Paid:{' '}
+                                    {formatCurrency(
+                                      client.advance_paid,
+                                      profile?.currency || 'INR'
+                                    )}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          <p className="text-xs text-gray-400 ml-2">
-                            {formatTimeAgo(client.created_at)}
-                          </p>
+                          <div className="flex flex-col items-end ml-2">
+                            <span
+                              className={`text-xs px-2 py-1 rounded-full font-medium ${getClientStatusColor(
+                                client.status
+                              )}`}
+                            >
+                              {getClientStatusLabel(client.status)}
+                            </span>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {formatTimeAgo(client.created_at)}
+                            </p>
+                          </div>
                         </div>
                       </Link>
                     </li>

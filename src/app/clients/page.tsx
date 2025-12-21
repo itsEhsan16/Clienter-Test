@@ -28,7 +28,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { KanbanColumn } from '@/components/KanbanColumn'
 import { KanbanCard } from '@/components/KanbanCard'
 
-const STATUSES = ['ongoing', 'potential', 'uncertain'] as const
+const STATUSES = ['new', 'ongoing', 'completed'] as const
 
 export default function ClientsPage() {
   const { user, profile, loading: authLoading, supabase } = useAuth()
@@ -123,8 +123,7 @@ export default function ClientsPage() {
 
   const clientsByStatus = useMemo(() => {
     const grouped: Record<string, Client[]> = {
-      uncertain: [],
-      potential: [],
+      new: [],
       ongoing: [],
       completed: [],
     }
