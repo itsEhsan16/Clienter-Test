@@ -277,11 +277,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         console.log('[Auth] Manually refreshing token in background...')
         const { data, error } = await supabase.auth.refreshSession()
-        
+
         if (error) {
           console.error('[Auth] Token refresh error:', error)
           // If refresh fails, user might need to re-authenticate
-          if (error.message.includes('refresh_token_not_found') || error.message.includes('invalid')) {
+          if (
+            error.message.includes('refresh_token_not_found') ||
+            error.message.includes('invalid')
+          ) {
             console.warn('[Auth] Invalid token, clearing session')
             userIdRef.current = null
             setUser(null)
