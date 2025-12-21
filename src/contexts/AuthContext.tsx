@@ -197,15 +197,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       )
 
       try {
+        const prevUserId = user?.id
+
+        // If there's a user in the session
         if (session?.user) {
-          console.log('[Auth] User authenticated via state change:', session.user.email)
-          setUser(session.user)
-          await fetchProfile(session.user.id)
+          // Only update if the user identity actually changed
+          if (prevUserId !== session.user.id) {
+            console.log('[Auth] User identity changed via state change:', session.user.email)
+            setUser(session.user)
+            await fetchProfile(session.user.id)
+          } else {
+            // Same user id - ignore to avoid unnecessary re-renders/refetches
+            console.log('[Auth] onAuthStateChange: same user id, ignoring')
+          }
         } else {
-          console.log('[Auth] User logged out via state change')
-          setUser(null)
-          setProfile(null)
-          profileCacheRef.current.clear()
+          // Only treat an absent session as a sign-out if the event indicates explicit sign-out
+          if (event === 'SIGNED_OUT') {
+            console.log('[Auth] User explicitly signed out')
+            setUser(null)
+            setProfile(null)
+            profileCacheRef.current.clear()
+          } else {
+            // For other transient events (token refresh, etc.), avoid clearing user immediately
+            console.log('[Auth] Transient auth event without session, ignoring to avoid flash')
+          }
         }
       } catch (err) {
         console.error('[Auth] Error handling auth state change:', err)
