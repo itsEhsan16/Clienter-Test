@@ -44,6 +44,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Profile cache
   const profileCacheRef = useRef<Map<string, Profile>>(new Map())
 
+  // Track current user ID to prevent unnecessary updates
+  const userIdRef = useRef<string | null>(null)
+
   // Use the module-level supabase client
   const supabase = supabaseClient
 
@@ -136,8 +139,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (session?.user && session.access_token) {
             console.log('[Auth] Session found for user:', session.user.email)
-            setUser(session.user)
-            await fetchProfile(session.user.id)
+            // Only update if user ID changed to avoid unnecessary re-renders
+            if (userIdRef.current !== session.user.id) {
+              userIdRef.current = session.user.id
+              setUser(session.user)
+              await fetchProfile(session.user.id)
+            } else {
+              console.log('[Auth] Same user, skipping state update')
+            }
             // done
             clearTimers()
             finishInit()
@@ -155,6 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           // No session after retries
           console.log('[Auth] No session found after retries')
+          userIdRef.current = null
           setUser(null)
           setProfile(null)
           profileCacheRef.current.clear()
@@ -166,6 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             timers.push(id)
             return
           }
+          userIdRef.current = null
           setUser(null)
           setProfile(null)
           profileCacheRef.current.clear()
@@ -218,8 +229,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // If there's a user in the session
         if (session?.user) {
           // Only update if the user identity actually changed
-          if (prevUserId !== session.user.id) {
+          if (userIdRef.current !== session.user.id) {
             console.log('[Auth] User identity changed via state change:', session.user.email)
+            userIdRef.current = session.user.id
             setUser(session.user)
             await fetchProfile(session.user.id)
           } else {
@@ -230,6 +242,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Only treat an absent session as a sign-out if the event indicates explicit sign-out
           if (event === 'SIGNED_OUT') {
             console.log('[Auth] User explicitly signed out')
+            userIdRef.current = null
             setUser(null)
             setProfile(null)
             profileCacheRef.current.clear()
@@ -255,6 +268,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase])
 
+  // Manual token refresh without triggering state updates
+  useEffect(() => {
+    if (!supabase || !user) return
+
+    // Refresh token every 50 minutes (tokens typically last 1 hour)
+    const refreshInterval = setInterval(async () => {
+      try {
+        console.log('[Auth] Manually refreshing token in background...')
+        const { data, error } = await supabase.auth.refreshSession()
+        
+        if (error) {
+          console.error('[Auth] Token refresh error:', error)
+          // If refresh fails, user might need to re-authenticate
+          if (error.message.includes('refresh_token_not_found') || error.message.includes('invalid')) {
+            console.warn('[Auth] Invalid token, clearing session')
+            userIdRef.current = null
+            setUser(null)
+            setProfile(null)
+            profileCacheRef.current.clear()
+          }
+        } else if (data.session) {
+          console.log('[Auth] Token refreshed successfully')
+          // Don't update state - just keep the session alive in storage
+        }
+      } catch (err) {
+        console.error('[Auth] Token refresh exception:', err)
+      }
+    }, 50 * 60 * 1000) // 50 minutes
+
+    return () => clearInterval(refreshInterval)
+  }, [supabase, user])
+
   const signOut = async () => {
     if (supabase) {
       await supabase.auth.signOut()
@@ -264,6 +309,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       // no-op
     }
+    userIdRef.current = null
     setUser(null)
     setProfile(null)
     profileCacheRef.current.clear()

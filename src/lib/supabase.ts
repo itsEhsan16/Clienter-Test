@@ -8,6 +8,16 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 // Create the Supabase client as a module-level singleton
 // This ensures env vars are injected at build time, not runtime
 export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    // Disable auto token refresh on window focus/visibility to prevent unnecessary refetches
+    autoRefreshToken: false,
+    // Disable automatic session detection in URL (we handle OAuth callback manually)
+    detectSessionInUrl: false,
+    // Keep session persisted in storage
+    persistSession: true,
+    // Use localStorage for browser-side persistence
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  },
   cookies: {
     get(name: string) {
       if (typeof document === 'undefined') return undefined
