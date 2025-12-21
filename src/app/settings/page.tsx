@@ -58,6 +58,8 @@ export default function SettingsPage() {
     setSaving(true)
     setMessage('')
 
+    // Try updating including `currency` first. If the DB/schema doesn't have
+    // the `currency` column (older DBs), retry without it and inform the user.
     const { error } = await supabase
       .from('profiles')
       .update({
@@ -70,7 +72,30 @@ export default function SettingsPage() {
       .eq('id', user.id)
 
     if (error) {
-      setMessage(`Error: ${error.message}`)
+      const msg = error.message || ''
+      if (msg.includes("Could not find the 'currency' column")) {
+        // Retry without currency column to avoid blocking the user.
+        const { error: err2 } = await supabase
+          .from('profiles')
+          .update({
+            full_name: formData.full_name,
+            timezone: formData.timezone,
+            default_reminder_minutes: formData.default_reminder_minutes,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', user.id)
+
+        if (err2) {
+          setMessage(`Error: ${err2.message}`)
+        } else {
+          await refreshProfile()
+          setMessage(
+            'Settings saved (currency column missing in DB). Run the migration to add `currency` to `profiles`.'
+          )
+        }
+      } else {
+        setMessage(`Error: ${error.message}`)
+      }
     } else {
       await refreshProfile()
       setMessage('Settings saved successfully!')

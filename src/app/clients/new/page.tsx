@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { TopBar } from '@/components/TopBar'
 import { ArrowLeft, Save, Loader2 } from 'lucide-react'
@@ -9,7 +8,6 @@ import Link from 'next/link'
 
 export default function NewClientPage() {
   const { user, supabase } = useAuth()
-  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -69,10 +67,17 @@ export default function NewClientPage() {
         setLoading(false)
       } else if (data && data.length > 0) {
         setSuccess(true)
-        // Redirect to clients list after a brief delay
-        setTimeout(() => {
-          router.push('/clients')
-        }, 1000)
+        setLoading(false)
+        setFormData({
+          name: '',
+          phone: '',
+          project_description: '',
+          total_amount: '',
+          advance_paid: '',
+          status: 'new',
+        })
+        // keep the success message briefly, but do NOT navigate away
+        setTimeout(() => setSuccess(false), 1500)
       } else {
         setError('Failed to create client - no data returned')
         setLoading(false)
@@ -140,9 +145,7 @@ export default function NewClientPage() {
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm text-green-700">
-                    Client created successfully! Redirecting...
-                  </p>
+                  <p className="text-sm text-green-700">Client created successfully!</p>
                 </div>
               </div>
             </div>
@@ -258,7 +261,7 @@ export default function NewClientPage() {
               <Link href="/clients" className="btn-secondary">
                 Cancel
               </Link>
-              <button type="submit" disabled={loading || success} className="btn-primary">
+              <button type="submit" disabled={loading} className="btn-primary">
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
