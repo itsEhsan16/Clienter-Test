@@ -108,70 +108,86 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initializingRef.current = true
 
     const restoreSession = async () => {
-      try {
-        console.log('[Auth] Starting session restoration...')
+      console.log('[Auth] Starting session restoration...')
 
-        // Get the current session
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession()
+      let attempts = 0
+      const maxAttempts = 3
+      const timers: Array<number> = []
 
-        console.log('[Auth] Session check:', {
-          hasSession: !!session,
-          userId: session?.user?.id,
-          accessToken: session?.access_token ? 'present' : 'missing',
-          error: sessionError,
-        })
+      const tryOnce = async () => {
+        attempts += 1
+        try {
+          const {
+            data: { session },
+            error: sessionError,
+          } = await supabase.auth.getSession()
 
-        if (sessionError) {
-          console.error('[Auth] Session restoration failed:', sessionError)
-          setUser(null)
-          setProfile(null)
-          profileCacheRef.current.clear()
-          setLoading(false)
-          initializedRef.current = true
-          initializingRef.current = false
-          return
-        }
+          console.log('[Auth] Session check:', {
+            hasSession: !!session,
+            userId: session?.user?.id,
+            accessToken: session?.access_token ? 'present' : 'missing',
+            error: sessionError,
+            attempt: attempts,
+          })
 
-        if (session?.user) {
-          console.log('[Auth] Session found for user:', session.user.email)
+          if (sessionError) {
+            console.error('[Auth] Session restoration error on attempt', attempts, sessionError)
+          }
 
-          // Verify the session has an access token
-          if (!session.access_token) {
-            console.error('[Auth] Session exists but missing access token!')
-            setUser(null)
-            setProfile(null)
-            profileCacheRef.current.clear()
-            setLoading(false)
-            initializedRef.current = true
-            initializingRef.current = false
+          if (session?.user && session.access_token) {
+            console.log('[Auth] Session found for user:', session.user.email)
+            setUser(session.user)
+            await fetchProfile(session.user.id)
+            // done
+            clearTimers()
+            finishInit()
             return
           }
 
-          setUser(session.user)
-          // Fetch profile (database trigger should have created it)
-          await fetchProfile(session.user.id)
-        } else {
-          console.log('[Auth] No session found during restoration')
+          if (attempts < maxAttempts) {
+            // Backoff before retrying - short delays to allow cookies to propagate in production
+            const delay = attempts * 500 // 500ms, 1000ms, ...
+            const id = window.setTimeout(tryOnce, delay)
+            timers.push(id)
+            console.warn('[Auth] No session detected, retrying in', delay, 'ms')
+            return
+          }
+
+          // No session after retries
+          console.log('[Auth] No session found after retries')
           setUser(null)
           setProfile(null)
           profileCacheRef.current.clear()
+          finishInit()
+        } catch (err) {
+          console.error('[Auth] restoreSession error:', err)
+          if (attempts < maxAttempts) {
+            const id = window.setTimeout(tryOnce, 500)
+            timers.push(id)
+            return
+          }
+          setUser(null)
+          setProfile(null)
+          profileCacheRef.current.clear()
+          finishInit()
         }
-      } catch (error) {
-        console.error('[Auth] restoreSession error:', error)
-        setUser(null)
-        setProfile(null)
-        profileCacheRef.current.clear()
-      } finally {
+      }
+
+      const clearTimers = () => timers.forEach((t) => clearTimeout(t))
+
+      const finishInit = () => {
         setLoading(false)
         initializedRef.current = true
         initializingRef.current = false
       }
+
+      tryOnce()
+
+      // cleanup function in case the effect unmounts
+      return () => clearTimers()
     }
 
-    restoreSession()
+    const cleanupRestore = restoreSession()
 
     // Timeout for faster failure recovery
     const timeoutId = setTimeout(() => {

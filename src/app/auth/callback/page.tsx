@@ -64,6 +64,23 @@ export default function AuthCallback() {
               '[Auth Callback] Session created successfully for user:',
               data.session.user.email
             )
+            // Persist tokens server-side for SSR and middleware
+            try {
+              await fetch('/api/auth/set-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  access_token: data.session.access_token,
+                  refresh_token: data.session.refresh_token,
+                  expires_at: data.session.expires_at,
+                  expires_in: data.session.expires_in ?? 3600,
+                }),
+              })
+              console.log('[Auth Callback] Server session cookies set')
+            } catch (e) {
+              console.warn('[Auth Callback] Failed to set server session cookies:', e)
+            }
+
             // Redirect to dashboard
             router.push('/dashboard')
             router.refresh()
