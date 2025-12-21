@@ -16,7 +16,10 @@ export interface Client {
   phone: string | null
   project_description: string | null
   budget: number | null
+  // legacy single-value field (kept for compatibility)
   advance_paid: number | null
+  // ordered list of payments made by the client
+  payments?: { name: string; amount: number; created_at?: string }[]
   total_amount: number | null
   status: 'new' | 'ongoing' | 'completed'
   order: number

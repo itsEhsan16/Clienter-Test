@@ -225,7 +225,7 @@ export default function DashboardPage() {
 
             supabase
               .from('clients')
-              .select('total_amount, advance_paid, status, created_at')
+              .select('total_amount, advance_paid, payments, status, created_at')
               .eq('user_id', user.id)
               .then((result: any) => {
                 console.log('[Dashboard] All clients result:', {
@@ -279,6 +279,11 @@ export default function DashboardPage() {
         // Calculate totals and statistics
         const allClients = allClientsResult.data || []
 
+        const getPaid = (c: any) =>
+          c?.payments && c.payments.length
+            ? c.payments.reduce((s: number, p: any) => s + (p?.amount || 0), 0)
+            : c?.advance_paid || 0
+
         // Status-based counts
         const newClients = allClients.filter((c: any) => c.status === 'new').length
         const ongoingClients = allClients.filter((c: any) => c.status === 'ongoing').length
@@ -289,7 +294,7 @@ export default function DashboardPage() {
           (sum: number, c: any) => sum + (c.total_amount || 0),
           0
         )
-        const totalPaid = allClients.reduce((sum: number, c: any) => sum + (c.advance_paid || 0), 0)
+        const totalPaid = allClients.reduce((sum: number, c: any) => sum + getPaid(c), 0)
         const totalPending = totalRevenue - totalPaid
 
         // Monthly calculations (current month)
@@ -307,10 +312,7 @@ export default function DashboardPage() {
           (sum: number, c: any) => sum + (c.total_amount || 0),
           0
         )
-        const monthlyPaid = monthlyClients.reduce(
-          (sum: number, c: any) => sum + (c.advance_paid || 0),
-          0
-        )
+        const monthlyPaid = monthlyClients.reduce((sum: number, c: any) => sum + getPaid(c), 0)
         const monthlyPending = monthlyRevenue - monthlyPaid
 
         // Calculate monthly data for the last 6 months
@@ -330,10 +332,7 @@ export default function DashboardPage() {
             (sum: number, c: any) => sum + (c.total_amount || 0),
             0
           )
-          const paid = clientsInMonth.reduce(
-            (sum: number, c: any) => sum + (c.advance_paid || 0),
-            0
-          )
+          const paid = clientsInMonth.reduce((sum: number, c: any) => sum + getPaid(c), 0)
 
           monthlyDataCalc.push({
             month: `${month} ${year}`,
@@ -780,15 +779,22 @@ export default function DashboardPage() {
                                 <span className="text-xs font-medium text-green-600">
                                   {formatCurrency(client.total_amount, profile?.currency || 'INR')}
                                 </span>
-                                {client.advance_paid && (
-                                  <span className="text-xs text-gray-500">
-                                    • Paid:{' '}
-                                    {formatCurrency(
-                                      client.advance_paid,
-                                      profile?.currency || 'INR'
-                                    )}
-                                  </span>
-                                )}
+                                {(() => {
+                                  const paid =
+                                    client.payments && client.payments.length
+                                      ? client.payments.reduce(
+                                          (s: number, p: any) => s + (p?.amount || 0),
+                                          0
+                                        )
+                                      : client.advance_paid || 0
+                                  return (
+                                    paid > 0 && (
+                                      <span className="text-xs text-gray-500">
+                                        • Paid: {formatCurrency(paid, profile?.currency || 'INR')}
+                                      </span>
+                                    )
+                                  )
+                                })()}
                               </div>
                             )}
                           </div>

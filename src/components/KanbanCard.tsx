@@ -57,12 +57,19 @@ export function KanbanCard({ client, isDragging, currency = 'USD' }: KanbanCardP
             Total: {formatCurrency(client.total_amount, currency)}
           </p>
         )}
-
-        {client.advance_paid!=0 && (
-          <p className="text-sm text-green-600 mb-2">
-            Paid: {formatCurrency(client.advance_paid, currency)}
-          </p>
-        )}
+        {(() => {
+          const totalPaid =
+            client.payments && client.payments.length
+              ? client.payments.reduce((s, p) => s + (p?.amount || 0), 0)
+              : client.advance_paid || 0
+          return (
+            totalPaid > 0 && (
+              <p className="text-sm text-green-600 mb-2">
+                Paid: {formatCurrency(totalPaid, currency)}
+              </p>
+            )
+          )
+        })()}
 
         {client.project_description && (
           <p className="text-xs text-gray-600 mb-2 line-clamp-2">{client.project_description}</p>

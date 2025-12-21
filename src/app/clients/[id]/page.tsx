@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { Navigation } from '@/components/Navigation'
 import { Client, Meeting } from '@/types/database'
 import {
   formatCurrency,
@@ -15,6 +14,12 @@ import {
 import { formatRelativeTime, formatTimeAgo } from '@/lib/date-utils'
 import { ArrowLeft, Edit, Trash2, Plus, Phone, Calendar, DollarSign } from 'lucide-react'
 import Link from 'next/link'
+
+function formatPhoneForWhatsApp(phone?: string | null) {
+  if (!phone) return null
+  const digits = phone.replace(/\D/g, '')
+  return digits || null
+}
 
 export default function ClientDetailPage() {
   const { user, profile, supabase } = useAuth()
@@ -29,9 +34,11 @@ export default function ClientDetailPage() {
     phone: '',
     project_description: '',
     total_amount: '',
-    advance_paid: '',
     status: 'new' as 'new' | 'ongoing' | 'completed',
   })
+  const [showAddPayment, setShowAddPayment] = useState(false)
+  const [newPaymentName, setNewPaymentName] = useState('')
+  const [newPaymentAmount, setNewPaymentAmount] = useState('')
 
   useEffect(() => {
     if (!user || !clientId) return
@@ -52,13 +59,19 @@ export default function ClientDetailPage() {
       }
 
       if (clientData) {
-        setClient(clientData)
+        const paymentsSorted =
+          clientData.payments && clientData.payments.length
+            ? [...clientData.payments].sort(
+                (a: any, b: any) => +new Date(b.created_at) - +new Date(a.created_at)
+              )
+            : []
+
+        setClient({ ...clientData, payments: paymentsSorted })
         setEditData({
           name: clientData.name,
           phone: clientData.phone || '',
           project_description: clientData.project_description || '',
           total_amount: clientData.total_amount ? clientData.total_amount.toString() : '',
-          advance_paid: clientData.advance_paid ? clientData.advance_paid.toString() : '',
           status: clientData.status,
         })
       } else {
@@ -92,7 +105,7 @@ export default function ClientDetailPage() {
         phone: editData.phone || null,
         project_description: editData.project_description || null,
         total_amount: editData.total_amount ? parseFloat(editData.total_amount) : null,
-        advance_paid: editData.advance_paid ? parseFloat(editData.advance_paid) : 0,
+        // keep payments as-is when updating basic client info
         status: editData.status,
         updated_at: new Date().toISOString(),
       })
@@ -105,10 +118,72 @@ export default function ClientDetailPage() {
         phone: editData.phone || null,
         project_description: editData.project_description || null,
         total_amount: editData.total_amount ? parseFloat(editData.total_amount) : null,
-        advance_paid: editData.advance_paid ? parseFloat(editData.advance_paid) : 0,
+        // payments remain unchanged here
         status: editData.status,
       })
       setIsEditing(false)
+    }
+  }
+
+  const handleAddPayment = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!client) return
+
+    const amount = parseFloat(newPaymentAmount || '0')
+    if (!newPaymentName || !amount || amount <= 0) {
+      alert('Please enter a valid payment name and amount')
+      return
+    }
+
+    const existingPayments = client.payments && client.payments.length ? client.payments : []
+    const newEntry = { name: newPaymentName, amount, created_at: new Date().toISOString() }
+    const updatedPayments = [newEntry, ...existingPayments]
+    const totalPaid = updatedPayments.reduce((s, p) => s + (p.amount || 0), 0)
+
+    const { error } = await supabase
+      .from('clients')
+      .update({
+        payments: updatedPayments,
+        advance_paid: totalPaid,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', client.id)
+
+    if (!error) {
+      setClient({ ...client, payments: updatedPayments, advance_paid: totalPaid })
+      setNewPaymentAmount('')
+      setNewPaymentName('')
+      setShowAddPayment(false)
+    } else {
+      console.error('Failed to add payment', error)
+      alert('Failed to add payment')
+    }
+  }
+
+  const handleDeletePayment = async (index: number) => {
+    if (!client) return
+    if (!confirm('Delete this payment? This cannot be undone.')) return
+
+    const existingPayments = client.payments && client.payments.length ? client.payments : []
+    if (index < 0 || index >= existingPayments.length) return
+
+    const updatedPayments = existingPayments.filter((_, i) => i !== index)
+    const totalPaid = updatedPayments.reduce((s, p) => s + (p.amount || 0), 0)
+
+    const { error } = await supabase
+      .from('clients')
+      .update({
+        payments: updatedPayments,
+        advance_paid: totalPaid,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', client.id)
+
+    if (!error) {
+      setClient({ ...client, payments: updatedPayments, advance_paid: totalPaid })
+    } else {
+      console.error('Failed to delete payment', error)
+      alert('Failed to delete payment')
     }
   }
 
@@ -138,12 +213,14 @@ export default function ClientDetailPage() {
   }
 
   const upcomingMeetings = meetings.filter((m) => new Date(m.meeting_time) > new Date())
-  const balance = (client?.total_amount || 0) - (client?.advance_paid || 0)
+  const totalPaid =
+    client.payments && client.payments.length
+      ? client.payments.reduce((s, p) => s + (p.amount || 0), 0)
+      : client.advance_paid || 0
+  const balance = (client?.total_amount || 0) - totalPaid
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navigation />
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-6">
           <Link
@@ -205,18 +282,6 @@ export default function ClientDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="label">Advance Paid</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editData.advance_paid}
-                    onChange={(e) => setEditData({ ...editData, advance_paid: e.target.value })}
-                    className="input"
-                    placeholder="1000.00"
-                  />
-                </div>
-                <div>
                   <label className="label">Status</label>
                   <select
                     value={editData.status}
@@ -259,22 +324,17 @@ export default function ClientDetailPage() {
                   </div>
                   {client.total_amount && (
                     <p className="text-lg text-gray-600 mt-1 flex items-center">
-                      <DollarSign className="w-4 h-4 mr-2" />
                       Total: {formatCurrency(client.total_amount, profile?.currency || 'INR')}
                     </p>
                   )}
-                  {client.advance_paid && client.advance_paid > 0 && (
+                  {totalPaid > 0 && (
                     <p className="text-lg text-green-600 mt-1 flex items-center">
-                      Paid: {formatCurrency(client.advance_paid, profile?.currency || 'INR')}
+                      Paid: {formatCurrency(totalPaid, profile?.currency || 'INR')}
                     </p>
                   )}
-                  {client.total_amount && client.advance_paid !== undefined && (
+                  {client.total_amount !== undefined && (
                     <p className="text-lg text-orange-600 mt-1 flex items-center">
-                      Balance:{' '}
-                      {formatCurrency(
-                        (client.total_amount || 0) - (client.advance_paid || 0),
-                        profile?.currency || 'INR'
-                      )}
+                      Balance: {formatCurrency(balance, profile?.currency || 'INR')}
                     </p>
                   )}
                 </div>
@@ -303,12 +363,19 @@ export default function ClientDetailPage() {
               {client.phone && (
                 <div className="mb-4 flex items-center text-gray-600">
                   <Phone className="w-4 h-4 mr-2" />
-                  <a
-                    href={`tel:${client.phone}`}
-                    className="text-primary-600 hover:text-primary-700"
-                  >
-                    {client.phone}
-                  </a>
+                  {formatPhoneForWhatsApp(client.phone) ? (
+                    <a
+                      href={`https://wa.me/${formatPhoneForWhatsApp(client.phone)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-zinc-500 hover:text-zinc-600"
+                      aria-label={`Open WhatsApp chat with ${client.phone}`}
+                    >
+                      {client.phone}
+                    </a>
+                  ) : (
+                    <span className="text-zinc-500">{client.phone}</span>
+                  )}
                 </div>
               )}
 
@@ -328,9 +395,9 @@ export default function ClientDetailPage() {
             </div>
           </div>
           <div className="card p-6">
-            <div className="text-sm font-medium text-gray-600 mb-1">Advance Paid</div>
+            <div className="text-sm font-medium text-gray-600 mb-1">Total Paid</div>
             <div className="text-3xl font-bold text-green-600">
-              {formatCurrency(client.advance_paid || 0, profile?.currency || 'INR')}
+              {formatCurrency(totalPaid || 0, profile?.currency || 'INR')}
             </div>
           </div>
           <div className="card p-6">
@@ -339,6 +406,86 @@ export default function ClientDetailPage() {
               {formatCurrency(balance, profile?.currency || 'INR')}
             </div>
           </div>
+        </div>
+
+        {/* Payments list / add payment */}
+        <div className="card p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Payments</h3>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowAddPayment((s) => !s)}
+                className="btn-secondary flex items-center"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Payment
+              </button>
+            </div>
+          </div>
+
+          {client.payments && client.payments.length > 0 ? (
+            <ul className="space-y-2 mb-4">
+              {client.payments.map((p, idx) => (
+                <li key={idx} className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium">{`Payment ${idx + 1}: ${p.name}`}</div>
+                    <div className="text-xs text-gray-500">
+                      {p.created_at ? formatRelativeTime(p.created_at) : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <div className="text-sm font-semibold">
+                      {formatCurrency(p.amount || 0, profile?.currency || 'INR')}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePayment(idx)}
+                      className="text-gray-400 hover:text-red-600"
+                      aria-label={`Delete payment ${idx + 1}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-gray-500 mb-4">No payments recorded yet.</p>
+          )}
+
+          {showAddPayment && (
+            <form onSubmit={handleAddPayment} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input
+                placeholder="Payment name (e.g. Advance)"
+                value={newPaymentName}
+                onChange={(e) => setNewPaymentName(e.target.value)}
+                className="input"
+                required
+              />
+              <input
+                placeholder="Amount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={newPaymentAmount}
+                onChange={(e) => setNewPaymentAmount(e.target.value)}
+                className="input"
+                required
+              />
+              <div className="flex space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddPayment(false)}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary">
+                  Save Payment
+                </button>
+              </div>
+            </form>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-6">
