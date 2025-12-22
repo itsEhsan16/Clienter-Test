@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
+  TrendingDown,
 } from 'lucide-react'
 import { NotificationCenter } from '@/components/NotificationCenter'
 
@@ -28,6 +29,7 @@ export function Sidebar() {
     { href: '/dashboard', label: 'Dashboard', icon: Home },
     { href: '/clients', label: 'Clients', icon: Users },
     { href: '/meetings', label: 'Meetings', icon: Calendar },
+    { href: '/expenses', label: 'Expenses', icon: TrendingDown },
     { href: '/settings', label: 'Settings', icon: Settings },
   ]
 

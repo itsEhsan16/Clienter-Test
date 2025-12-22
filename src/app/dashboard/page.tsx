@@ -18,6 +18,7 @@ import {
   AlertCircle,
   CheckCircle,
   Briefcase,
+  TrendingDown,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -46,6 +47,8 @@ export default function DashboardPage() {
     monthlyPaid: 0,
     monthlyPending: 0,
     monthlyNewClients: 0,
+    totalExpenses: 0,
+    profit: 0,
   })
   const [monthlyData, setMonthlyData] = useState<MonthlyStats[]>([])
   const [showOnboarding, setShowOnboarding] = useState(false)
@@ -177,6 +180,7 @@ export default function DashboardPage() {
           clientsCountResult,
           allClientsResult,
           meetingsCountResult,
+          expensesResult,
         ] = await withTimeout(
           Promise.all([
             supabase
@@ -246,6 +250,18 @@ export default function DashboardPage() {
                 })
                 return result
               }),
+
+            supabase
+              .from('expenses')
+              .select('amount')
+              .eq('user_id', user.id)
+              .then((result: any) => {
+                console.log('[Dashboard] Expenses result:', {
+                  error: result.error,
+                  count: result.data?.length || 0,
+                })
+                return result
+              }),
           ]),
           10000,
           'Dashboard data fetch'
@@ -274,6 +290,9 @@ export default function DashboardPage() {
         }
         if (meetingsCountResult.error) {
           console.error('[Dashboard] Meetings count error:', meetingsCountResult.error)
+        }
+        if (expensesResult.error) {
+          console.error('[Dashboard] Expenses fetch error:', expensesResult.error)
         }
 
         // Calculate totals and statistics
@@ -343,6 +362,15 @@ export default function DashboardPage() {
           })
         }
 
+        // Calculate total expenses
+        const totalExpenses = (expensesResult.data || []).reduce(
+          (sum: number, expense: any) => sum + (Number(expense.amount) || 0),
+          0
+        )
+
+        // Calculate profit (Total Paid - Total Expenses)
+        const profit = totalPaid - totalExpenses
+
         setRecentClients(clientsResult.data || [])
         setUpcomingReminders(remindersResult.data || [])
         setMonthlyData(monthlyDataCalc)
@@ -359,6 +387,8 @@ export default function DashboardPage() {
           monthlyPaid,
           monthlyPending,
           monthlyNewClients: monthlyClients.length,
+          totalExpenses,
+          profit,
         })
 
         if ((clientsResult.data || []).length === 0) {
@@ -489,6 +519,54 @@ export default function DashboardPage() {
             </div>
             <p className="text-sm font-semibold text-gray-600">Total Clients</p>
             <p className="text-xs text-gray-400 mt-1">All time</p>
+          </div>
+        </div>
+
+        {/* Profit & Expenses Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Profit Card */}
+          <div className="stat-card group hover:shadow-2xl transition-all bg-gradient-to-br from-emerald-50 to-green-50 border-2 border-emerald-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg">
+                <TrendingUp className="w-7 h-7 text-white" />
+              </div>
+              <div className="text-right">
+                <span className="text-4xl font-bold text-emerald-700">
+                  {formatCurrency(stats.profit, profile?.currency || 'INR')}
+                </span>
+              </div>
+            </div>
+            <p className="text-base font-bold text-emerald-900">Net Profit</p>
+            <p className="text-sm text-emerald-700 mt-1">Revenue received minus expenses</p>
+            <div className="mt-3 pt-3 border-t border-emerald-200 flex items-center justify-between text-xs">
+              <span className="text-emerald-600">
+                Paid: {formatCurrency(stats.totalPaid, profile?.currency || 'INR')}
+              </span>
+              <span className="text-red-600">
+                Expenses: {formatCurrency(stats.totalExpenses, profile?.currency || 'INR')}
+              </span>
+            </div>
+          </div>
+
+          {/* Expenses Card */}
+          <div className="stat-card group hover:shadow-xl transition-all">
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center group-hover:bg-red-500 transition-colors">
+                <TrendingDown className="w-6 h-6 text-red-600 group-hover:text-white transition-colors" />
+              </div>
+              <span className="text-3xl font-bold text-gray-900">
+                {formatCurrency(stats.totalExpenses, profile?.currency || 'INR')}
+              </span>
+            </div>
+            <p className="text-sm font-semibold text-gray-600">Total Expenses</p>
+            <p className="text-xs text-gray-400 mt-1">All business expenses</p>
+            <Link
+              href="/expenses"
+              className="mt-3 inline-flex items-center text-sm text-red-600 hover:text-red-700 font-medium"
+            >
+              View all expenses
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </Link>
           </div>
         </div>
 

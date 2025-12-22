@@ -62,3 +62,12 @@ export interface MeetingWithDetails extends Meeting {
 export interface ReminderWithMeeting extends Reminder {
   meeting: MeetingWithDetails
 }
+
+export interface Expense {
+  id: string
+  user_id: string
+  description: string
+  amount: number
+  created_at: string
+  updated_at: string
+}
