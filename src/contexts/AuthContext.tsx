@@ -59,22 +59,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('[Auth] ========== FETCHPROFILE CALLED ==========')
     console.log('[Auth] Fetching profile for userId:', userId)
 
-    // First, check if we have a valid session
-    const {
-      data: { session: currentSession },
-    } = await supabase.auth.getSession()
-    console.log('[Auth] Current session check:', {
-      hasSession: !!currentSession,
-      sessionUserId: currentSession?.user?.id,
-      matchesRequestedUserId: currentSession?.user?.id === userId,
-      hasAccessToken: !!currentSession?.access_token,
-    })
-
-    if (!currentSession || currentSession.user.id !== userId) {
-      console.error('[Auth] Session mismatch or missing! Cannot fetch profile.')
-      return
-    }
-
     // Check cache first with 5-minute TTL
     const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
     const cached = profileCacheRef.current.get(userId)
@@ -90,9 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       console.log('[Auth] Starting Supabase query for profile...')
-      console.log('[Auth] Auth headers:', {
-        hasAuthHeader: !!supabase.auth.getSession,
-      })
       const queryStartTime = Date.now()
 
       // Add timeout to prevent hanging
@@ -153,10 +134,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[Auth] No profile data returned for user:', userId)
         console.log('[Auth] Profile row may not exist in database - attempting to create it...')
 
-        // Attempt to create the profile
-        const userEmail = currentSession?.user?.email
-        if (userEmail) {
-          try {
+        // Attempt to create the profile - get email from session
+        try {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession()
+          const userEmail = session?.user?.email
+
+          if (userEmail) {
             const { data: newProfile, error: insertError } = await supabase
               .from('profiles')
               .insert({
@@ -180,12 +165,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               cacheTimestampRef.current.set(userId, Date.now())
               setProfile(profileData)
             }
-          } catch (createError) {
-            console.error('[Auth] Exception creating profile:', createError)
+          } else {
+            console.error('[Auth] Cannot create profile - no email available')
             setProfile(null)
           }
-        } else {
-          console.error('[Auth] Cannot create profile - no email available')
+        } catch (createError) {
+          console.error('[Auth] Exception creating profile:', createError)
           setProfile(null)
         }
       }
