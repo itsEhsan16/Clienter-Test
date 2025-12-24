@@ -41,8 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const initializingRef = useRef(false)
   const initializedRef = useRef(false)
 
-  // Profile cache
-  const profileCacheRef = useRef<Map<string, Profile | number>>(new Map())
+  // Profile cache - separate Maps for data and timestamps
+  const profileCacheRef = useRef<Map<string, Profile>>(new Map())
+  const cacheTimestampRef = useRef<Map<string, number>>(new Map())
 
   // Track current user ID to prevent unnecessary updates
   const userIdRef = useRef<string | null>(null)
@@ -51,55 +52,86 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = supabaseClient
 
   const fetchProfile = async (userId: string) => {
-    if (!supabase) return
+    if (!supabase) {
+      console.error('[Auth] Cannot fetch profile - supabase client is null')
+      return
+    }
     console.log('[Auth] Fetching profile for userId:', userId)
 
     // Check cache first with 5-minute TTL
     const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
     const cached = profileCacheRef.current.get(userId)
-    const cacheTime = profileCacheRef.current.get(`${userId}_time`) as number | undefined
+    const cacheTime = cacheTimestampRef.current.get(userId)
 
     if (cached && cacheTime && Date.now() - cacheTime < CACHE_TTL) {
-      console.log('[Auth] Profile found in cache')
-      if (typeof cached !== 'number') {
-        setProfile(cached as Profile)
-      }
+      console.log('[Auth] Profile found in cache:', cached.full_name)
+      setProfile(cached)
       return
     }
 
     console.log('[Auth] Cache miss or expired, fetching fresh profile')
 
     try {
+      console.log('[Auth] Starting Supabase query for profile...')
+      const queryStartTime = Date.now()
+
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle()
 
+      const queryDuration = Date.now() - queryStartTime
+      console.log(`[Auth] Profile query completed in ${queryDuration}ms`)
+
       if (error) {
-        console.error('[Auth] Error fetching profile:', error)
+        console.error('[Auth] Error fetching profile:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          userId,
+        })
         setProfile(null)
         return
       }
 
       if (data) {
+        console.log('[Auth] Profile data received successfully:', {
+          hasFullName: !!data.full_name,
+          fullName: data.full_name,
+          userId: data.id,
+          allFields: Object.keys(data),
+        })
         const profileData = data as Profile
         profileCacheRef.current.set(userId, profileData)
-        profileCacheRef.current.set(`${userId}_time`, Date.now())
+        cacheTimestampRef.current.set(userId, Date.now())
+        console.log('[Auth] Setting profile state with:', profileData.full_name)
         setProfile(profileData)
+        console.log('[Auth] Profile state updated successfully')
       } else {
-        console.warn('[Auth] No profile found for user:', userId)
+        console.warn('[Auth] No profile data returned for user:', userId)
+        console.log('[Auth] Setting profile to null')
         setProfile(null)
       }
-    } catch (error) {
-      console.error('[Auth] Profile fetch exception:', error)
+    } catch (error: any) {
+      console.error('[Auth] Profile fetch exception:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+        userId,
+      })
+      console.log('[Auth] Setting profile to null due to exception')
       setProfile(null)
     }
+    console.log('[Auth] fetchProfile function completed')
   }
 
   const refreshProfile = async () => {
     if (user) {
+      console.log('[Auth] Refreshing profile for user:', user.id)
       profileCacheRef.current.delete(user.id)
+      cacheTimestampRef.current.delete(user.id)
       await fetchProfile(user.id)
     }
   }
@@ -151,7 +183,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (userIdRef.current !== session.user.id) {
               userIdRef.current = session.user.id
               setUser(session.user)
-              await fetchProfile(session.user.id)
+              console.log('[Auth] Fetching profile during session restoration...')
+              try {
+                await fetchProfile(session.user.id)
+                console.log('[Auth] Profile fetch completed during session restoration')
+              } catch (profileError) {
+                console.error(
+                  '[Auth] Profile fetch failed during session restoration:',
+                  profileError
+                )
+                // Continue anyway - user can still use the app without profile
+              }
             } else {
               console.log('[Auth] Same user, skipping state update')
             }
@@ -176,6 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null)
           setProfile(null)
           profileCacheRef.current.clear()
+          cacheTimestampRef.current.clear()
           finishInit()
         } catch (err) {
           console.error('[Auth] restoreSession error:', err)
@@ -188,6 +231,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null)
           setProfile(null)
           profileCacheRef.current.clear()
+          cacheTimestampRef.current.clear()
           finishInit()
         }
       }
@@ -241,7 +285,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log('[Auth] User identity changed via state change:', session.user.email)
             userIdRef.current = session.user.id
             setUser(session.user)
+            console.log('[Auth] Calling fetchProfile from onAuthStateChange...')
             await fetchProfile(session.user.id)
+            console.log('[Auth] fetchProfile call completed from onAuthStateChange')
           } else {
             // Same user id - ignore to avoid unnecessary re-renders/refetches
             console.log('[Auth] onAuthStateChange: same user id, ignoring')
@@ -254,6 +300,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(null)
             setProfile(null)
             profileCacheRef.current.clear()
+            cacheTimestampRef.current.clear()
           } else {
             // For other transient events (token refresh, etc.), avoid clearing user immediately
             console.log('[Auth] Transient auth event without session, ignoring to avoid flash')
@@ -298,6 +345,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(null)
             setProfile(null)
             profileCacheRef.current.clear()
+            cacheTimestampRef.current.clear()
           }
         } else if (data.session) {
           console.log('[Auth] Token refreshed successfully')
@@ -324,7 +372,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
     setProfile(null)
     profileCacheRef.current.clear()
+    cacheTimestampRef.current.clear()
   }
+
+  // Debug effect to track profile changes
+  useEffect(() => {
+    console.log('[Auth] Profile state changed:', {
+      hasProfile: !!profile,
+      fullName: profile?.full_name,
+      profileId: profile?.id,
+    })
+  }, [profile])
+
+  // Debug effect to track user changes
+  useEffect(() => {
+    console.log('[Auth] User state changed:', {
+      hasUser: !!user,
+      email: user?.email,
+      userId: user?.id,
+    })
+  }, [user])
 
   // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(

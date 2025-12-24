@@ -9,8 +9,8 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 // This ensures env vars are injected at build time, not runtime
 export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    // Disable auto token refresh on window focus/visibility to prevent unnecessary refetches
-    autoRefreshToken: false,
+    // Enable auto token refresh to maintain session in production
+    autoRefreshToken: true,
     // Disable automatic session detection in URL (we handle OAuth callback manually)
     detectSessionInUrl: false,
     // Keep session persisted in storage
