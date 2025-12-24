@@ -74,24 +74,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       console.log('[Auth] Starting Supabase query for profile...')
+      console.log('[Auth] User ID for query:', userId)
       const queryStartTime = Date.now()
 
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Profile query timeout after 8 seconds')), 8000)
-      )
-
-      const queryPromise = supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
-
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise]).catch(
-        (timeoutError) => {
-          console.error('[Auth] Query timeout or race error:', timeoutError)
-          return { data: null, error: timeoutError }
-        }
-      )
+      // Direct query without timeout to see what happens
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle()
 
       const queryDuration = Date.now() - queryStartTime
-      console.log(`[Auth] Profile query completed in ${queryDuration}ms`)
+      console.log(`[Auth] Profile query completed in ${queryDuration}ms`, { data, error })
 
       if (error) {
         console.error('[Auth] Error fetching profile:', {
@@ -113,6 +107,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error('[Auth] TIMEOUT ERROR: Profile query took too long!')
         }
 
+        // Set profile to null but don't block the app
+        console.warn('[Auth] Profile fetch failed, app will continue without profile data')
         setProfile(null)
         return
       }
@@ -136,12 +132,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Attempt to create the profile - get email from session
         try {
+          console.log('[Auth] Fetching session to get email for profile creation...')
           const {
             data: { session },
           } = await supabase.auth.getSession()
           const userEmail = session?.user?.email
 
           if (userEmail) {
+            console.log('[Auth] Creating profile with email:', userEmail)
             const { data: newProfile, error: insertError } = await supabase
               .from('profiles')
               .insert({
@@ -157,6 +155,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (insertError) {
               console.error('[Auth] Failed to create profile:', insertError)
+              console.error('[Auth] Insert error details:', {
+                message: insertError.message,
+                code: insertError.code,
+                details: insertError.details,
+                hint: insertError.hint,
+              })
               setProfile(null)
             } else if (newProfile) {
               console.log('[Auth] Profile created successfully:', newProfile)
@@ -164,13 +168,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               profileCacheRef.current.set(userId, profileData)
               cacheTimestampRef.current.set(userId, Date.now())
               setProfile(profileData)
+              console.log('[Auth] New profile set in state')
             }
           } else {
-            console.error('[Auth] Cannot create profile - no email available')
+            console.error('[Auth] Cannot create profile - no email available from session')
             setProfile(null)
           }
-        } catch (createError) {
-          console.error('[Auth] Exception creating profile:', createError)
+        } catch (createError: any) {
+          console.error('[Auth] Exception creating profile:', {
+            message: createError?.message,
+            name: createError?.name,
+            stack: createError?.stack,
+          })
           setProfile(null)
         }
       }
