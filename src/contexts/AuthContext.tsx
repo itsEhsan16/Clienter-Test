@@ -56,7 +56,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('[Auth] Cannot fetch profile - supabase client is null')
       return
     }
+    console.log('[Auth] ========== FETCHPROFILE CALLED ==========')
     console.log('[Auth] Fetching profile for userId:', userId)
+
+    // First, check if we have a valid session
+    const {
+      data: { session: currentSession },
+    } = await supabase.auth.getSession()
+    console.log('[Auth] Current session check:', {
+      hasSession: !!currentSession,
+      sessionUserId: currentSession?.user?.id,
+      matchesRequestedUserId: currentSession?.user?.id === userId,
+      hasAccessToken: !!currentSession?.access_token,
+    })
+
+    if (!currentSession || currentSession.user.id !== userId) {
+      console.error('[Auth] Session mismatch or missing! Cannot fetch profile.')
+      return
+    }
 
     // Check cache first with 5-minute TTL
     const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
@@ -73,13 +90,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       console.log('[Auth] Starting Supabase query for profile...')
+      console.log('[Auth] Auth headers:', {
+        hasAuthHeader: !!supabase.auth.getSession,
+      })
       const queryStartTime = Date.now()
 
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Profile query timeout after 8 seconds')), 8000)
+      )
+
+      const queryPromise = supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]).catch(
+        (timeoutError) => {
+          console.error('[Auth] Query timeout or race error:', timeoutError)
+          return { data: null, error: timeoutError }
+        }
+      )
 
       const queryDuration = Date.now() - queryStartTime
       console.log(`[Auth] Profile query completed in ${queryDuration}ms`)
@@ -92,6 +120,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           hint: error.hint,
           userId,
         })
+        console.error('[Auth] Full error object:', error)
+
+        // Check if it's an RLS policy error
+        if (error.message?.includes('row-level security') || error.code === '42501') {
+          console.error('[Auth] RLS POLICY ERROR: User cannot read their own profile!')
+        }
+
+        // Check if it's a timeout
+        if (error.message?.includes('timeout')) {
+          console.error('[Auth] TIMEOUT ERROR: Profile query took too long!')
+        }
+
         setProfile(null)
         return
       }
@@ -111,8 +151,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('[Auth] Profile state updated successfully')
       } else {
         console.warn('[Auth] No profile data returned for user:', userId)
-        console.log('[Auth] Setting profile to null')
-        setProfile(null)
+        console.log('[Auth] Profile row may not exist in database - attempting to create it...')
+
+        // Attempt to create the profile
+        const userEmail = currentSession?.user?.email
+        if (userEmail) {
+          try {
+            const { data: newProfile, error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: userId,
+                email: userEmail,
+                full_name: userEmail.split('@')[0], // Use email prefix as default name
+                currency: 'INR',
+                timezone: 'UTC',
+                default_reminder_minutes: 15,
+              })
+              .select()
+              .single()
+
+            if (insertError) {
+              console.error('[Auth] Failed to create profile:', insertError)
+              setProfile(null)
+            } else if (newProfile) {
+              console.log('[Auth] Profile created successfully:', newProfile)
+              const profileData = newProfile as Profile
+              profileCacheRef.current.set(userId, profileData)
+              cacheTimestampRef.current.set(userId, Date.now())
+              setProfile(profileData)
+            }
+          } catch (createError) {
+            console.error('[Auth] Exception creating profile:', createError)
+            setProfile(null)
+          }
+        } else {
+          console.error('[Auth] Cannot create profile - no email available')
+          setProfile(null)
+        }
       }
     } catch (error: any) {
       console.error('[Auth] Profile fetch exception:', {
@@ -382,6 +457,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       fullName: profile?.full_name,
       profileId: profile?.id,
     })
+    console.table({
+      'Profile Loaded': !!profile,
+      'Profile Name': profile?.full_name || 'N/A',
+      'Profile Email': profile?.email || 'N/A',
+    })
   }, [profile])
 
   // Debug effect to track user changes
@@ -391,7 +471,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: user?.email,
       userId: user?.id,
     })
+    console.table({
+      'User Loaded': !!user,
+      'User Email': user?.email || 'N/A',
+      'User ID': user?.id || 'N/A',
+    })
   }, [user])
+
+  // Debug effect to track loading state
+  useEffect(() => {
+    console.log('[Auth] Loading state changed:', loading)
+    console.table({
+      'Auth Loading': loading,
+      'Has User': !!user,
+      'Has Profile': !!profile,
+      'App Ready': !loading && !!user,
+    })
+  }, [loading, user, profile])
 
   // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(
