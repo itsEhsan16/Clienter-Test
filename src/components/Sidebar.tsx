@@ -25,6 +25,14 @@ export function Sidebar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
 
+  // Get display name from profile, user metadata (OAuth), or fallback to email
+  const displayName =
+    profile?.full_name ||
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email?.split('@')[0] ||
+    'User'
+
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: Home },
     { href: '/clients', label: 'Clients', icon: Users },
@@ -127,13 +135,11 @@ export function Sidebar() {
               <div className="flex items-center space-x-3 px-2 py-2 rounded-lg bg-zinc-900">
                 <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center">
                   <span className="text-white font-semibold text-sm">
-                    {profile?.full_name?.charAt(0) || user?.email?.charAt(0).toUpperCase()}
+                    {displayName.charAt(0).toUpperCase()}
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">
-                    {profile?.full_name || 'User'}
-                  </p>
+                  <p className="text-sm font-medium text-white truncate">{displayName}</p>
                   <p className="text-xs text-gray-400 truncate">{user?.email}</p>
                 </div>
               </div>
@@ -142,7 +148,7 @@ export function Sidebar() {
             <div className="mb-4 flex justify-center">
               <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center">
                 <span className="text-white font-semibold text-sm">
-                  {profile?.full_name?.charAt(0) || user?.email?.charAt(0).toUpperCase()}
+                  {displayName.charAt(0).toUpperCase()}
                 </span>
               </div>
             </div>

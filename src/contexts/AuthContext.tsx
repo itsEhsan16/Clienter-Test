@@ -124,7 +124,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           userId: data.id,
           allFields: Object.keys(data),
         })
-        const profileData = data as Profile
+        let profileData = data as Profile
+
+        // If profile has no full_name, try to get it from user metadata (OAuth)
+        if (!profileData.full_name) {
+          try {
+            const {
+              data: { session },
+            } = await supabase.auth.getSession()
+            const userMetadata = session?.user?.user_metadata
+            const nameFromMetadata = userMetadata?.full_name || userMetadata?.name
+
+            if (nameFromMetadata) {
+              console.log(
+                '[Auth] Updating profile with name from OAuth metadata:',
+                nameFromMetadata
+              )
+              // Update the profile in the database
+              const { data: updatedProfile, error: updateError } = await supabase
+                .from('profiles')
+                .update({ full_name: nameFromMetadata })
+                .eq('id', userId)
+                .select()
+                .single()
+
+              if (!updateError && updatedProfile) {
+                profileData = updatedProfile as Profile
+                console.log('[Auth] Profile updated with OAuth name:', profileData.full_name)
+              }
+            }
+          } catch (metadataError) {
+            console.error('[Auth] Error updating profile from metadata:', metadataError)
+          }
+        }
+
         profileCacheRef.current.set(userId, profileData)
         cacheTimestampRef.current.set(userId, Date.now())
         console.log('[Auth] Setting profile state with:', profileData.full_name)
@@ -140,6 +173,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             data: { session },
           } = await supabase.auth.getSession()
           const userEmail = session?.user?.email
+          const userMetadata = session?.user?.user_metadata
+          // Get name from OAuth metadata, fallback to email prefix
+          const fullName = userMetadata?.full_name || userMetadata?.name || userEmail?.split('@')[0]
 
           if (userEmail) {
             const { data: newProfile, error: insertError } = await supabase
@@ -147,7 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               .insert({
                 id: userId,
                 email: userEmail,
-                full_name: userEmail.split('@')[0], // Use email prefix as default name
+                full_name: fullName,
                 currency: 'INR',
                 timezone: 'UTC',
                 default_reminder_minutes: 15,

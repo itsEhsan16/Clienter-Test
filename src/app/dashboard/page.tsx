@@ -439,10 +439,18 @@ export default function DashboardPage() {
     )
   }
 
+  // Get display name from profile, user metadata (OAuth), or fallback
+  const displayName =
+    profile?.full_name ||
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email?.split('@')[0] ||
+    ''
+
   return (
     <div className="min-h-screen">
       <TopBar
-        title={`Welcome back${profile?.full_name ? `, ${profile.full_name}` : ''}!`}
+        title={`Welcome back${displayName ? `, ${displayName}` : ''}!`}
         description="Here's what's happening with your freelance business today."
       />
 
