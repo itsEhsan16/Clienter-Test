@@ -18,6 +18,8 @@ import {
 } from 'lucide-react'
 import { NotificationCenter } from '@/components/NotificationCenter'
 
+import Image from 'next/image'
+
 export function Sidebar() {
   const pathname = usePathname()
   const { user, signOut, profile } = useAuth()
@@ -43,13 +45,16 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile Menu Button */}
-      <button
-        onClick={() => setIsMobileOpen(!isMobileOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-black text-white hover:bg-zinc-800 transition-colors"
-      >
-        {isMobileOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-      </button>
+      {/* Mobile Menu Button (show menu icon when closed) */}
+      {!isMobileOpen && (
+        <button
+          onClick={() => setIsMobileOpen(true)}
+          className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-black text-white hover:bg-zinc-800 transition-colors"
+          aria-label="Open menu"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
+      )}
 
       {/* Mobile Overlay */}
       {isMobileOpen && (
@@ -67,14 +72,30 @@ export function Sidebar() {
           ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
       >
+        {/* Mobile Close Button (inside sidebar, top-right) */}
+        {isMobileOpen && (
+          <button
+            onClick={() => setIsMobileOpen(false)}
+            className="lg:hidden absolute top-4 right-4 z-50 p-2 rounded-lg bg-black text-white hover:bg-zinc-800 transition-colors"
+            aria-label="Close menu"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        )}
         {/* Logo Section */}
         <div className="h-20 flex items-center justify-between px-4 border-b border-gray-800 relative">
           {!isCollapsed && (
-            <Link href="/dashboard" className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">C</span>
+            <Link href="/dashboard" className="flex items-center space-x-3">
+              <div className="flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 overflow-hidden rounded-md">
+                <Image
+                  src="/logo.png"
+                  alt="Clienter Logo"
+                  width={32}
+                  height={32}
+                  className="object-contain w-full h-full"
+                />
               </div>
-              <span className="text-xl font-bold">Clienter</span>
+              <span className="text-lg sm:text-xl font-bold">Clienter</span>
             </Link>
           )}
           {isCollapsed && (

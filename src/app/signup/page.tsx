@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { UserPlus, Loader2, Mail } from 'lucide-react'
 
+import Image from 'next/image'
+
 export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -154,8 +156,16 @@ export default function SignupPage() {
       <div className="max-w-md w-full space-y-8">
         {/* Logo/Brand */}
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl mb-4">
-            <span className="text-white font-bold text-2xl">C</span>
+          <div className="flex justify-center mb-4">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 overflow-hidden rounded-md">
+              <Image
+                src="/logo.png"
+                alt="Clienter Logo"
+                width={80}
+                height={80}
+                className="object-contain w-full h-full"
+              />
+            </div>
           </div>
           <h1 className="text-4xl font-bold text-white mb-2">Clienter</h1>
           <p className="text-gray-400">Start managing your freelance business today</p>

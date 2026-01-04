@@ -9,6 +9,23 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'Clienter - Freelancer Client Management',
   description: 'Manage your freelance clients, projects, and meetings in one place',
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
+  openGraph: {
+    title: 'Clienter - Freelancer Client Management',
+    description: 'Manage your freelance clients, projects, and meetings in one place',
+    // uses the public logo for social previews
+    images: ['/logo.png'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Clienter - Freelancer Client Management',
+    description: 'Manage your freelance clients, projects, and meetings in one place',
+    images: ['/logo.png'],
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
