@@ -32,13 +32,16 @@ export default function TeamLoginPage() {
 
       if (data.session) {
         // Check if user is a team member (not owner)
-        const { data: membership, error: membershipError } = await supabase
+        // Get the first active membership if multiple exist
+        const { data: memberships, error: membershipError } = await supabase
           .from('organization_members')
           .select('role, organization_id, display_name, status')
           .eq('user_id', data.user.id)
-          .maybeSingle()
+          .eq('status', 'active')
+          .order('created_at', { ascending: true })
+          .limit(1)
 
-        console.log('Membership query result:', { membership, membershipError })
+        console.log('Membership query result:', { memberships, membershipError })
 
         if (membershipError) {
           await supabase.auth.signOut()
@@ -46,12 +49,14 @@ export default function TeamLoginPage() {
           throw new Error('Database error: ' + membershipError.message)
         }
 
-        if (!membership) {
+        if (!memberships || memberships.length === 0) {
           await supabase.auth.signOut()
           throw new Error(
-            'Your account is not associated with any organization. Please contact your administrator to add you as a team member.'
+            'Your account is not associated with any active organization. Please contact your administrator to add you as a team member.'
           )
         }
+
+        const membership = memberships[0]
 
         if (membership.status !== 'active') {
           await supabase.auth.signOut()
