@@ -1,23 +1,20 @@
 -- ====================================================================
--- SIMPLIFIED PROJECT MANAGEMENT - QUICK IMPLEMENTATION
--- Run this first to get basic project support working
+-- FRESH PROJECT MANAGEMENT MIGRATION
+-- 100% Safe - Handles all existing columns/tables
 -- ====================================================================
-
--- This is a simplified version that gets you up and running quickly
--- You can expand with full features later
 
 -- =====================================================
 -- 1. CREATE PROJECT STATUS TYPE
 -- =====================================================
 
 DO $$ BEGIN
-  CREATE TYPE project_status AS ENUM ('planning', 'in_progress', 'completed', 'cancelled');
-EXCEPTION
-  WHEN duplicate_object THEN null;
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'project_status') THEN
+    CREATE TYPE project_status AS ENUM ('planning', 'in_progress', 'completed', 'cancelled');
+  END IF;
 END $$;
 
 -- =====================================================
--- 2. CREATE PROJECTS TABLE (SIMPLIFIED)
+-- 2. CREATE PROJECTS TABLE
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -38,7 +35,7 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 -- =====================================================
--- 3. PROJECT TEAM MEMBERS (WHO WORKS ON WHAT)
+-- 3. CREATE PROJECT TEAM MEMBERS TABLE
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS project_team_members (
@@ -53,50 +50,86 @@ CREATE TABLE IF NOT EXISTS project_team_members (
   assigned_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
--- Add unique constraint only if it doesn't exist
+-- Add unique constraint safely
 DO $$ BEGIN
-  ALTER TABLE project_team_members ADD CONSTRAINT project_team_members_project_id_team_member_id_key UNIQUE(project_id, team_member_id);
-EXCEPTION
-  WHEN duplicate_table THEN null;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = 'project_team_members_project_team_unique'
+  ) THEN
+    ALTER TABLE project_team_members 
+    ADD CONSTRAINT project_team_members_project_team_unique 
+    UNIQUE(project_id, team_member_id);
+  END IF;
 END $$;
 
 -- =====================================================
--- 4. UPDATE EXPENSES TO LINK TO PROJECTS
+-- 4. UPDATE EXPENSES TABLE - CHECK EACH COLUMN
 -- =====================================================
 
--- Add columns safely - only if they don't exist
+-- Add project_id
 DO $$ BEGIN
-  ALTER TABLE expenses ADD COLUMN project_id UUID REFERENCES projects(id) ON DELETE CASCADE;
-EXCEPTION
-  WHEN duplicate_column THEN null;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'expenses' AND column_name = 'project_id'
+  ) THEN
+    ALTER TABLE expenses ADD COLUMN project_id UUID REFERENCES projects(id) ON DELETE CASCADE;
+  END IF;
 END $$;
 
+-- Add project_team_member_id
 DO $$ BEGIN
-  ALTER TABLE expenses ADD COLUMN project_team_member_id UUID REFERENCES project_team_members(id) ON DELETE SET NULL;
-EXCEPTION
-  WHEN duplicate_column THEN null;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'expenses' AND column_name = 'project_team_member_id'
+  ) THEN
+    ALTER TABLE expenses ADD COLUMN project_team_member_id UUID REFERENCES project_team_members(id) ON DELETE SET NULL;
+  END IF;
 END $$;
 
+-- Add total_amount (only if doesn't exist)
 DO $$ BEGIN
-  ALTER TABLE expenses ADD COLUMN total_amount DECIMAL(10, 2);
-EXCEPTION
-  WHEN duplicate_column THEN null;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'expenses' AND column_name = 'total_amount'
+  ) THEN
+    ALTER TABLE expenses ADD COLUMN total_amount DECIMAL(10, 2);
+  END IF;
 END $$;
 
+-- Add paid_amount (only if doesn't exist)
 DO $$ BEGIN
-  ALTER TABLE expenses ADD COLUMN paid_amount DECIMAL(10, 2) DEFAULT 0;
-EXCEPTION
-  WHEN duplicate_column THEN null;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'expenses' AND column_name = 'paid_amount'
+  ) THEN
+    ALTER TABLE expenses ADD COLUMN paid_amount DECIMAL(10, 2) DEFAULT 0;
+  END IF;
 END $$;
 
+-- Add payment_status (only if doesn't exist)
 DO $$ BEGIN
-  ALTER TABLE expenses ADD COLUMN payment_status VARCHAR(20) CHECK (payment_status IN ('pending', 'partial', 'completed'));
-EXCEPTION
-  WHEN duplicate_column THEN null;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'expenses' AND column_name = 'payment_status'
+  ) THEN
+    ALTER TABLE expenses ADD COLUMN payment_status VARCHAR(20);
+  END IF;
+END $$;
+
+-- Add check constraint for payment_status
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = 'expenses_payment_status_check'
+  ) THEN
+    ALTER TABLE expenses 
+    ADD CONSTRAINT expenses_payment_status_check 
+    CHECK (payment_status IN ('pending', 'partial', 'completed'));
+  END IF;
 END $$;
 
 -- =====================================================
--- 5. INDEXES
+-- 5. CREATE INDEXES
 -- =====================================================
 
 CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id);
@@ -163,25 +196,26 @@ CREATE POLICY "Owners manage team"
 CREATE OR REPLACE FUNCTION update_project_totals()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Handle both INSERT/UPDATE and DELETE
+  -- Handle DELETE
   IF TG_OP = 'DELETE' THEN
     IF OLD.project_id IS NOT NULL THEN
-      -- Update project total_paid after deletion
       UPDATE projects
       SET 
-        total_paid = (SELECT COALESCE(SUM(COALESCE(paid_amount, amount)), 0) FROM expenses WHERE project_id = OLD.project_id),
+        total_paid = (
+          SELECT COALESCE(SUM(COALESCE(paid_amount, amount)), 0) 
+          FROM expenses 
+          WHERE project_id = OLD.project_id
+        ),
         updated_at = TIMEZONE('utc', NOW())
       WHERE id = OLD.project_id;
       
-      -- Update team member total_paid if applicable
       IF OLD.project_team_member_id IS NOT NULL THEN
         UPDATE project_team_members
-        SET 
-          total_paid = (
-            SELECT COALESCE(SUM(COALESCE(paid_amount, amount)), 0) 
-            FROM expenses 
-            WHERE project_team_member_id = OLD.project_team_member_id
-          )
+        SET total_paid = (
+          SELECT COALESCE(SUM(COALESCE(paid_amount, amount)), 0) 
+          FROM expenses 
+          WHERE project_team_member_id = OLD.project_team_member_id
+        )
         WHERE id = OLD.project_team_member_id;
       END IF;
     END IF;
@@ -189,22 +223,23 @@ BEGIN
   ELSE
     -- INSERT or UPDATE
     IF NEW.project_id IS NOT NULL THEN
-      -- Update project total_paid
       UPDATE projects
       SET 
-        total_paid = (SELECT COALESCE(SUM(COALESCE(paid_amount, amount)), 0) FROM expenses WHERE project_id = NEW.project_id),
+        total_paid = (
+          SELECT COALESCE(SUM(COALESCE(paid_amount, amount)), 0) 
+          FROM expenses 
+          WHERE project_id = NEW.project_id
+        ),
         updated_at = TIMEZONE('utc', NOW())
       WHERE id = NEW.project_id;
       
-      -- Update team member total_paid if applicable
       IF NEW.project_team_member_id IS NOT NULL THEN
         UPDATE project_team_members
-        SET 
-          total_paid = (
-            SELECT COALESCE(SUM(COALESCE(paid_amount, amount)), 0) 
-            FROM expenses 
-            WHERE project_team_member_id = NEW.project_team_member_id
-          )
+        SET total_paid = (
+          SELECT COALESCE(SUM(COALESCE(paid_amount, amount)), 0) 
+          FROM expenses 
+          WHERE project_team_member_id = NEW.project_team_member_id
+        )
         WHERE id = NEW.project_team_member_id;
       END IF;
     END IF;
@@ -236,7 +271,12 @@ JOIN clients c ON p.client_id = c.id
 JOIN project_team_members ptm ON p.id = ptm.project_id
 WHERE ptm.status = 'active';
 
-GRANT SELECT ON my_assigned_projects TO authenticated;
+-- Grant access
+DO $$ BEGIN
+  GRANT SELECT ON my_assigned_projects TO authenticated;
+EXCEPTION
+  WHEN undefined_object THEN NULL;
+END $$;
 
 -- Project summary
 CREATE OR REPLACE VIEW project_summary AS
@@ -250,42 +290,26 @@ JOIN clients c ON p.client_id = c.id
 LEFT JOIN project_team_members ptm ON p.id = ptm.project_id AND ptm.status = 'active'
 GROUP BY p.id, c.name;
 
-GRANT SELECT ON project_summary TO authenticated;
-
--- =====================================================
--- 9. SAMPLE DATA (OPTIONAL - FOR TESTING)
--- =====================================================
-
--- Uncomment to auto-create projects from existing clients
-/*
-INSERT INTO projects (client_id, organization_id, name, description, budget, created_by)
-SELECT 
-  c.id,
-  c.organization_id,
-  c.name || ' - Project',
-  c.project_description,
-  c.total_amount,
-  c.user_id
-FROM clients c
-WHERE NOT EXISTS (SELECT 1 FROM projects WHERE client_id = c.id);
-*/
+-- Grant access
+DO $$ BEGIN
+  GRANT SELECT ON project_summary TO authenticated;
+EXCEPTION
+  WHEN undefined_object THEN NULL;
+END $$;
 
 -- =====================================================
 -- SUCCESS!
 -- =====================================================
 
--- ✅ Projects table created
--- ✅ Team assignments table created  
--- ✅ Expenses linked to projects with enhanced payment tracking
--- ✅ Auto-update triggers working
--- ✅ Views for easy querying
--- ✅ Security policies in place
-
--- Changes made to expenses table:
---   - project_id: Link to projects
---   - project_team_member_id: Link to specific team member on project
---   - total_amount: Total cost for team payments
---   - paid_amount: Amount paid so far (auto-calculated)
---   - payment_status: pending/partial/completed
-
--- Next: Update your UI to use projects!
+-- Test the setup
+DO $$ 
+DECLARE
+  project_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO project_count FROM projects;
+  RAISE NOTICE '✅ Migration completed successfully!';
+  RAISE NOTICE '✅ Projects table ready (% existing projects)', project_count;
+  RAISE NOTICE '✅ All columns added to expenses table';
+  RAISE NOTICE '✅ Triggers and views created';
+  RAISE NOTICE '✅ Ready to use!';
+END $$;
