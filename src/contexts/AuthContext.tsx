@@ -193,6 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 currency: 'INR',
                 timezone: 'UTC',
                 default_reminder_minutes: 15,
+                account_type: 'owner', // Default to owner for regular signups
               })
               .select()
               .single()

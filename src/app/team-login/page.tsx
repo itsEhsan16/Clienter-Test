@@ -31,6 +31,26 @@ export default function TeamLoginPage() {
       if (error) throw error
 
       if (data.session) {
+        // CRITICAL: Check account_type first to ensure this is a team member
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('account_type, full_name')
+          .eq('id', data.user.id)
+          .single()
+
+        if (profileError || !profile) {
+          await supabase.auth.signOut()
+          throw new Error('Unable to verify account type. Please contact support.')
+        }
+
+        // Owners cannot login via team login page
+        if (profile.account_type === 'owner') {
+          await supabase.auth.signOut()
+          toast.error('Agency owners must use the main login page')
+          setTimeout(() => router.push('/login'), 1500)
+          return
+        }
+
         // Check if user is a team member (not owner)
         // Get the first active membership if multiple exist
         const { data: memberships, error: membershipError } = await supabase

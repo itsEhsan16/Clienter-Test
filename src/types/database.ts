@@ -57,6 +57,8 @@ export interface OrganizationMemberWithProfile extends OrganizationMember {
 // USER PROFILE
 // =====================================================
 
+export type AccountType = 'owner' | 'team_member'
+
 export interface Profile {
   id: string
   email: string
@@ -64,6 +66,7 @@ export interface Profile {
   timezone: string
   default_reminder_minutes: number
   currency: string
+  account_type: AccountType
   created_at: string
   updated_at: string
 }

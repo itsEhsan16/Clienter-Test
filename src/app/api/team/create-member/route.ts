@@ -119,12 +119,14 @@ export async function POST(req: NextRequest) {
     console.log('[Team API] User created successfully:', newUser.user.id)
 
     // Manually create profile using Admin client (bypasses RLS)
+    // Set account_type as 'team_member' to distinguish from owners
     const { error: profileError } = await supabaseAdmin.from('profiles').upsert(
       {
         id: newUser.user.id,
         email: email,
         full_name: displayName || email.split('@')[0],
         currency: 'INR',
+        account_type: 'team_member', // Critical: Mark as team member
       },
       { onConflict: 'id' }
     )

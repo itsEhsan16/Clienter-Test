@@ -73,17 +73,24 @@ function LoginForm() {
       if (data.session) {
         console.log('✅ Login successful, setting server cookies...')
 
-        // Check if user is a team member (not owner)
-        const { data: membership } = await supabase
-          .from('organization_members')
-          .select('role')
-          .eq('user_id', data.user.id)
-          .maybeSingle()
+        // CRITICAL: Check account_type first to ensure this is an owner
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('account_type, full_name')
+          .eq('id', data.user.id)
+          .single()
 
-        // If user is a team member (not owner), redirect to team login
-        if (membership && membership.role !== 'owner') {
+        if (profileError || !profile) {
           await supabase.auth.signOut()
-          setError('Team members should use the team login page.')
+          setError('Unable to verify account type. Please contact support.')
+          setLoading(false)
+          return
+        }
+
+        // Team members cannot login via owner login page
+        if (profile.account_type === 'team_member') {
+          await supabase.auth.signOut()
+          setError('Team members must use the team login page.')
           setLoading(false)
           setTimeout(() => router.push('/team-login'), 2000)
           return

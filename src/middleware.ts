@@ -67,17 +67,17 @@ export async function middleware(req: NextRequest) {
 
       // If already logged in, redirect to appropriate dashboard
       if (session) {
-        const { data: membership } = await supabase
-          .from('organization_members')
-          .select('role')
-          .eq('user_id', session.user.id)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('account_type')
+          .eq('id', session.user.id)
           .maybeSingle()
 
-        const userRole = membership?.role
+        const accountType = profile?.account_type
 
-        if (userRole === 'owner') {
+        if (accountType === 'owner') {
           return NextResponse.redirect(new URL('/dashboard', req.url))
-        } else if (userRole) {
+        } else if (accountType === 'team_member') {
           return NextResponse.redirect(new URL('/teammate/dashboard', req.url))
         }
       }
@@ -120,15 +120,15 @@ export async function middleware(req: NextRequest) {
       hasSession = !!session
       sessionCache.set(req, hasSession)
 
-      // Get user role if session exists
+      // Get account_type from profiles (more reliable than organization_members)
       if (session) {
-        const { data: membership } = await supabase
-          .from('organization_members')
-          .select('role')
-          .eq('user_id', session.user.id)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('account_type')
+          .eq('id', session.user.id)
           .maybeSingle()
 
-        userRole = membership?.role || null
+        userRole = profile?.account_type || null
       }
     } catch (error) {
       console.error('[Middleware] Session check error:', error)
@@ -158,7 +158,7 @@ export async function middleware(req: NextRequest) {
     }
 
     // Team member trying to access owner-only pages -> send to equivalent teammate page
-    if (userRole !== 'owner' && isOwnerPath) {
+    if (userRole === 'team_member' && isOwnerPath) {
       if (pathname.startsWith('/tasks')) {
         return NextResponse.redirect(new URL('/teammate/tasks', req.url))
       }
