@@ -3,24 +3,29 @@
 import { createContext, useContext, useEffect, useState, useRef, useMemo } from 'react'
 import { User, type AuthChangeEvent, type Session } from '@supabase/supabase-js'
 import { supabase as supabaseClient } from '@/lib/supabase'
-import { Profile } from '@/types/database'
+import { Profile, MemberRole } from '@/types/database'
+import { getOrgMembership, type OrgMembership } from '@/lib/rbac-helpers'
 
 interface AuthContextType {
   user: User | null
   profile: Profile | null
+  organization: OrgMembership | null
   loading: boolean
   supabase: any
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
+  refreshOrganization: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
+  organization: null,
   loading: true,
   supabase: null,
   signOut: async () => {},
   refreshProfile: async () => {},
+  refreshOrganization: async () => {},
 })
 
 export const useAuth = () => {
@@ -34,6 +39,7 @@ export const useAuth = () => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [organization, setOrganization] = useState<OrgMembership | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -232,6 +238,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const fetchOrganization = async (userId: string) => {
+    console.log('[Auth] Fetching organization membership for userId:', userId)
+    try {
+      const orgMembership = await getOrgMembership(userId)
+      if (orgMembership) {
+        console.log(
+          '[Auth] Organization membership loaded:',
+          orgMembership.organizationName,
+          orgMembership.role
+        )
+        setOrganization(orgMembership)
+      } else {
+        console.warn('[Auth] No organization membership found for user')
+        setOrganization(null)
+      }
+    } catch (err) {
+      console.error('[Auth] Error fetching organization membership:', err)
+      setOrganization(null)
+    }
+  }
+
+  const refreshOrganization = async () => {
+    if (user) {
+      console.log('[Auth] Refreshing organization for user:', user.id)
+      await fetchOrganization(user.id)
+    }
+  }
+
   useEffect(() => {
     if (!supabase) {
       setLoading(false)
@@ -282,10 +316,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               console.log('[Auth] Fetching profile during session restoration...')
               try {
                 await fetchProfile(session.user.id)
-                console.log('[Auth] Profile fetch completed during session restoration')
+                await fetchOrganization(session.user.id)
+                console.log(
+                  '[Auth] Profile and organization fetch completed during session restoration'
+                )
               } catch (profileError) {
                 console.error(
-                  '[Auth] Profile fetch failed during session restoration:',
+                  '[Auth] Profile/organization fetch failed during session restoration:',
                   profileError
                 )
                 // Continue anyway - user can still use the app without profile
@@ -313,6 +350,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           userIdRef.current = null
           setUser(null)
           setProfile(null)
+          setOrganization(null)
           profileCacheRef.current.clear()
           cacheTimestampRef.current.clear()
           finishInit()
@@ -326,6 +364,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           userIdRef.current = null
           setUser(null)
           setProfile(null)
+          setOrganization(null)
           profileCacheRef.current.clear()
           cacheTimestampRef.current.clear()
           finishInit()
@@ -383,7 +422,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(session.user)
             console.log('[Auth] Calling fetchProfile from onAuthStateChange...')
             await fetchProfile(session.user.id)
-            console.log('[Auth] fetchProfile call completed from onAuthStateChange')
+            await fetchOrganization(session.user.id)
+            console.log(
+              '[Auth] fetchProfile and fetchOrganization call completed from onAuthStateChange'
+            )
           } else {
             // Same user id - ignore to avoid unnecessary re-renders/refetches
             console.log('[Auth] onAuthStateChange: same user id, ignoring')
@@ -395,6 +437,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             userIdRef.current = null
             setUser(null)
             setProfile(null)
+            setOrganization(null)
             profileCacheRef.current.clear()
             cacheTimestampRef.current.clear()
           } else {
@@ -440,6 +483,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             userIdRef.current = null
             setUser(null)
             setProfile(null)
+            setOrganization(null)
             profileCacheRef.current.clear()
             cacheTimestampRef.current.clear()
           }
@@ -467,6 +511,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     userIdRef.current = null
     setUser(null)
     setProfile(null)
+    setOrganization(null)
     profileCacheRef.current.clear()
     cacheTimestampRef.current.clear()
   }
@@ -512,8 +557,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Memoize context value to prevent unnecessary re-renders
   const contextValue = useMemo(
-    () => ({ user, profile, loading, supabase, signOut, refreshProfile }),
-    [user, profile, loading]
+    () => ({
+      user,
+      profile,
+      organization,
+      loading,
+      supabase,
+      signOut,
+      refreshProfile,
+      refreshOrganization,
+    }),
+    [user, profile, organization, loading]
   )
 
   // Show error if Supabase is not configured

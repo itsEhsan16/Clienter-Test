@@ -25,7 +25,10 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/clients') ||
     pathname.startsWith('/meetings') ||
-    pathname.startsWith('/settings')
+    pathname.startsWith('/settings') ||
+    pathname.startsWith('/team') ||
+    pathname.startsWith('/tasks') ||
+    pathname.startsWith('/expenses')
 
   const isAuthPage = pathname === '/login' || pathname === '/signup'
 
