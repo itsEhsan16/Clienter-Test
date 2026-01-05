@@ -18,6 +18,7 @@ import {
   UserCog,
   CheckSquare,
   Building2,
+  FolderKanban,
 } from 'lucide-react'
 import { NotificationCenter } from '@/components/NotificationCenter'
 import { getRoleBadgeColor, getRoleLabel } from '@/lib/rbac-helpers'
@@ -47,6 +48,7 @@ export function Sidebar() {
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: Home },
     { href: '/clients', label: 'Clients', icon: Users },
+    { href: '/projects', label: 'Projects', icon: FolderKanban },
     { href: '/meetings', label: 'Meetings', icon: Calendar },
     { href: '/expenses', label: 'Expenses', icon: TrendingDown },
     // Team management - only for owners/admins

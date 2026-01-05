@@ -339,6 +339,10 @@ export default function ClientDetailPage() {
                   )}
                 </div>
                 <div className="flex space-x-2">
+                  <Link href={`/projects/new?client=${client.id}`} className="btn-primary">
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Project
+                  </Link>
                   <button onClick={() => setIsEditing(true)} className="btn-secondary">
                     <Edit className="w-4 h-4 mr-2" />
                     Edit

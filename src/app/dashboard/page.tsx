@@ -7,6 +7,7 @@ import { DashboardSkeleton } from '@/components/SkeletonLoaders'
 import { Client, ReminderWithMeeting } from '@/types/database'
 import { formatRelativeTime, formatTimeAgo } from '@/lib/date-utils'
 import { formatCurrency, getClientStatusColor, getClientStatusLabel } from '@/lib/utils'
+import { format } from 'date-fns'
 import {
   Plus,
   Users,
@@ -55,6 +56,13 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hasFetched, setHasFetched] = useState(false)
+  const [teamEarnings, setTeamEarnings] = useState({
+    totalProjects: 0,
+    totalEarned: 0,
+    totalReceived: 0,
+    totalPending: 0,
+    recentPayments: [] as any[],
+  })
 
   useEffect(() => {
     console.log(
@@ -371,6 +379,86 @@ export default function DashboardPage() {
         // Calculate profit (Total Paid - Total Expenses)
         const profit = totalPaid - totalExpenses
 
+        // Fetch team member earnings (if user is a team member)
+        try {
+          // Get assigned projects
+          const { data: assignedProjects, error: projectsError } = await supabase
+            .from('project_team_members')
+            .select(
+              `
+              allocated_budget,
+              total_paid,
+              projects (
+                id,
+                name,
+                clients (name, company_name)
+              )
+            `
+            )
+            .eq('team_member_id', user.id)
+
+          if (!projectsError && assignedProjects && assignedProjects.length > 0) {
+            const totalProjects = assignedProjects.length
+            const totalEarned = assignedProjects.reduce(
+              (sum, p) => sum + (p.allocated_budget || 0),
+              0
+            )
+            const totalReceived = assignedProjects.reduce((sum, p) => sum + (p.total_paid || 0), 0)
+            const totalPending = totalEarned - totalReceived
+
+            // Get recent payments from expenses
+            const projectIds = assignedProjects.map((p) => p.projects.id)
+            const { data: recentExpenses, error: expensesError } = await supabase
+              .from('expenses')
+              .select(
+                `
+                projects (name),
+                team_payment_records (
+                  id,
+                  amount,
+                  payment_date,
+                  payment_type,
+                  notes
+                )
+              `
+              )
+              .in('project_id', projectIds)
+              .order('created_at', { ascending: false })
+              .limit(10)
+
+            const allPayments: any[] = []
+            if (!expensesError && recentExpenses) {
+              recentExpenses.forEach((expense: any) => {
+                if (expense.team_payment_records && expense.team_payment_records.length > 0) {
+                  expense.team_payment_records.forEach((payment: any) => {
+                    allPayments.push({
+                      ...payment,
+                      project_name: expense.projects?.name || 'Unknown Project',
+                    })
+                  })
+                }
+              })
+            }
+
+            const recentPayments = allPayments
+              .sort(
+                (a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()
+              )
+              .slice(0, 5)
+
+            setTeamEarnings({
+              totalProjects,
+              totalEarned,
+              totalReceived,
+              totalPending,
+              recentPayments,
+            })
+          }
+        } catch (earningsError) {
+          console.warn('[Dashboard] Could not fetch team earnings:', earningsError)
+          // Not a critical error, team member earnings are optional
+        }
+
         setRecentClients(clientsResult.data || [])
         setUpcomingReminders(remindersResult.data || [])
         setMonthlyData(monthlyDataCalc)
@@ -577,6 +665,84 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
+
+        {/* Team Member Earnings Section */}
+        {teamEarnings.totalProjects > 0 && (
+          <div className="mb-8">
+            <div className="card">
+              <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+                <h2 className="text-lg font-bold text-gray-900 flex items-center">
+                  <DollarSign className="w-5 h-5 mr-2 text-blue-600" />
+                  My Earnings as Team Member
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Track your project payments and pending amounts
+                </p>
+              </div>
+
+              <div className="p-6">
+                {/* Earnings Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <p className="text-sm text-gray-600">Total Projects</p>
+                    <p className="text-2xl font-bold text-blue-600">{teamEarnings.totalProjects}</p>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <p className="text-sm text-gray-600">Total Earned</p>
+                    <p className="text-2xl font-bold text-green-600">
+                      {formatCurrency(teamEarnings.totalEarned, profile?.currency || 'INR')}
+                    </p>
+                  </div>
+                  <div className="bg-emerald-50 p-4 rounded-lg">
+                    <p className="text-sm text-gray-600">Received</p>
+                    <p className="text-2xl font-bold text-emerald-600">
+                      {formatCurrency(teamEarnings.totalReceived, profile?.currency || 'INR')}
+                    </p>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg">
+                    <p className="text-sm text-gray-600">Pending</p>
+                    <p className="text-2xl font-bold text-orange-600">
+                      {formatCurrency(teamEarnings.totalPending, profile?.currency || 'INR')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Recent Payments */}
+                {teamEarnings.recentPayments.length > 0 && (
+                  <div>
+                    <h3 className="text-md font-bold text-gray-900 mb-3">Recent Payments</h3>
+                    <div className="space-y-2">
+                      {teamEarnings.recentPayments.map((payment) => (
+                        <div
+                          key={payment.id}
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{payment.project_name}</p>
+                              <p className="text-xs text-gray-500">
+                                {format(new Date(payment.payment_date), 'MMM dd, yyyy')} •{' '}
+                                {payment.payment_type}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-green-600">
+                              +{formatCurrency(payment.amount, profile?.currency || 'INR')}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Revenue Analytics */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
