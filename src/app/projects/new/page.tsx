@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -28,7 +28,7 @@ interface AssignedTeamMember {
   allocated_budget: number
 }
 
-export default function NewProjectPage() {
+function NewProjectPageContent() {
   const { user, organization } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -349,7 +349,7 @@ export default function NewProjectPage() {
 
           {assignedMembers.length === 0 ? (
             <p className="text-gray-600 text-center py-8">
-              No team members assigned yet. Click "Add Member" to assign team members.
+              No team members assigned yet. Click &quot;Add Member&quot; to assign team members.
             </p>
           ) : (
             <div className="space-y-3">
@@ -435,5 +435,13 @@ export default function NewProjectPage() {
         </div>
       </form>
     </div>
+  )
+}
+
+export default function NewProjectPage() {
+  return (
+    <Suspense fallback={<div className="p-8">Loading...</div>}>
+      <NewProjectPageContent />
+    </Suspense>
   )
 }

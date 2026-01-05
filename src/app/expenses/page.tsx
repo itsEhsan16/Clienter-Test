@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'react-hot-toast'
@@ -70,7 +70,7 @@ interface AssignedProject {
   }
 }
 
-export default function ExpensesPage() {
+function ExpensesPageContent() {
   const { user, organization } = useAuth()
   const searchParams = useSearchParams()
   const preselectedProjectId = searchParams?.get('project')
@@ -477,7 +477,7 @@ export default function ExpensesPage() {
               {filteredExpenses.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                    No expenses found. Click "Add Expense" to get started.
+                    No expenses found. Click &quot;Add Expense&quot; to get started.
                   </td>
                 </tr>
               ) : (
@@ -965,5 +965,13 @@ export default function ExpensesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function ExpensesPage() {
+  return (
+    <Suspense fallback={<div className="p-8">Loading...</div>}>
+      <ExpensesPageContent />
+    </Suspense>
   )
 }

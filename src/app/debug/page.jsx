@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { createBrowserClient } from '@/lib/supabase'
+import { createBrowserClient_LEGACY } from '@/lib/supabase'
 
 export default function DebugPage() {
   const [envStatus, setEnvStatus] = useState({})
@@ -10,7 +10,7 @@ export default function DebugPage() {
 
   const supabase = useMemo(() => {
     try {
-      return createBrowserClient()
+      return createBrowserClient_LEGACY()
     } catch (err) {
       return null
     }

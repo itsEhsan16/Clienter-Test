@@ -400,14 +400,14 @@ export default function DashboardPage() {
           if (!projectsError && assignedProjects && assignedProjects.length > 0) {
             const totalProjects = assignedProjects.length
             const totalEarned = assignedProjects.reduce(
-              (sum, p) => sum + (p.allocated_budget || 0),
+              (sum: number, p: any) => sum + (p.allocated_budget || 0),
               0
             )
-            const totalReceived = assignedProjects.reduce((sum, p) => sum + (p.total_paid || 0), 0)
+            const totalReceived = assignedProjects.reduce((sum: number, p: any) => sum + (p.total_paid || 0), 0)
             const totalPending = totalEarned - totalReceived
 
             // Get recent payments from expenses
-            const projectIds = assignedProjects.map((p) => p.projects.id)
+            const projectIds = assignedProjects.map((p: any) => p.projects.id)
             const { data: recentExpenses, error: expensesError } = await supabase
               .from('expenses')
               .select(
@@ -559,7 +559,7 @@ export default function DashboardPage() {
           <div className="mb-8 bg-gradient-to-r from-orange-50 to-orange-100 border-l-4 border-orange-500 rounded-xl p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-2">🎉 Welcome to Clienter!</h2>
             <p className="text-gray-700 mb-4">
-              Get started by adding your first client. You can schedule meetings and we'll remind
+              Get started by adding your first client. You can schedule meetings and we&apos;ll remind
               you before they start.
             </p>
             <Link href="/clients/new" className="btn-primary">
@@ -830,7 +830,7 @@ export default function DashboardPage() {
             <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
               <h2 className="text-lg font-bold text-gray-900 flex items-center">
                 <TrendingUp className="w-5 h-5 mr-2 text-blue-600" />
-                This Month's Performance
+                This Month&apos;s Performance
               </h2>
             </div>
             <div className="p-6">

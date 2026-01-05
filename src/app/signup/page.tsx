@@ -128,15 +128,15 @@ export default function SignupPage() {
             </div>
             <h1 className="text-3xl font-bold text-white mb-4">Check Your Email</h1>
             <div className="bg-white rounded-2xl p-8 shadow-2xl">
-              <p className="text-gray-700 mb-4">We've sent a confirmation email to:</p>
+              <p className="text-gray-700 mb-4">We&apos;ve sent a confirmation email to:</p>
               <p className="text-lg font-semibold text-orange-600 mb-6">{email}</p>
               <p className="text-gray-600 mb-6">
-                Click the confirmation link in the email to activate your account. You'll be
+                Click the confirmation link in the email to activate your account. You&apos;ll be
                 automatically logged in after confirming.
               </p>
               <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
                 <p className="text-sm text-blue-700">
-                  💡 Tip: Check your spam folder if you don't see the email within a few minutes.
+                  💡 Tip: Check your spam folder if you don&apos;t see the email within a few minutes.
                 </p>
               </div>
               <div className="mt-6">
