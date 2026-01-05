@@ -136,7 +136,8 @@ export default function SignupPage() {
               </p>
               <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
                 <p className="text-sm text-blue-700">
-                  💡 Tip: Check your spam folder if you don&apos;t see the email within a few minutes.
+                  💡 Tip: Check your spam folder if you don&apos;t see the email within a few
+                  minutes.
                 </p>
               </div>
               <div className="mt-6">
