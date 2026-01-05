@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse request body
-    const { email, password, role, displayName, notes } = await req.json()
+    const { email, password, role, displayName, notes, monthlySalary } = await req.json()
 
     if (!email || !password || !role) {
       return NextResponse.json({ error: 'Email, password, and role are required' }, { status: 400 })
@@ -67,6 +67,15 @@ export async function POST(req: NextRequest) {
     // Validate password length
     if (password.length < 6) {
       return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
+    }
+
+    // Verify service role key is configured
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('[Team API] SUPABASE_SERVICE_ROLE_KEY is not configured')
+      return NextResponse.json(
+        { error: 'Server configuration error: Missing service role key' },
+        { status: 500 }
+      )
     }
 
     // Create Supabase Admin client
@@ -107,18 +116,47 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Wait a moment for the profile trigger to create the profile
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    console.log('[Team API] User created successfully:', newUser.user.id)
+
+    // Manually create profile using Admin client (bypasses RLS)
+    const { error: profileError } = await supabaseAdmin.from('profiles').upsert(
+      {
+        id: newUser.user.id,
+        email: email,
+        full_name: displayName || email.split('@')[0],
+        currency: 'INR',
+      },
+      { onConflict: 'id' }
+    )
+
+    if (profileError) {
+      console.error('[Team API] Error creating profile:', profileError)
+      // Try to clean up the user
+      await supabaseAdmin.auth.admin.deleteUser(newUser.user.id)
+      return NextResponse.json(
+        { error: 'Failed to create user profile: ' + profileError.message },
+        { status: 500 }
+      )
+    }
+
+    console.log('[Team API] Profile created successfully')
 
     // Add the new user to the organization
-    const { error: memberError } = await supabase.from('organization_members').insert({
+    const memberData: any = {
       organization_id: membership.organization_id,
       user_id: newUser.user.id,
       role,
       display_name: displayName || null,
       notes: notes || null,
       status: 'active',
-    })
+    }
+
+    // Add monthly_salary if provided (field may not exist in older schemas)
+    if (monthlySalary) {
+      memberData.monthly_salary = parseFloat(monthlySalary)
+    }
+
+    const { error: memberError } = await supabase.from('organization_members').insert(memberData)
 
     if (memberError) {
       console.error('[Team API] Error adding member to organization:', memberError)
@@ -131,7 +169,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch the complete member data to return
-    const { data: memberData } = await supabase
+    const { data: completeMemberData } = await supabase
       .from('organization_members')
       .select(
         `
@@ -150,7 +188,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        member: memberData,
+        member: completeMemberData,
         message: 'Team member created successfully',
       },
       { status: 201 }

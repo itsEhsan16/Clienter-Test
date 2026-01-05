@@ -37,6 +37,7 @@ export default function TeamPage() {
   const [role, setRole] = useState('developer')
   const [displayName, setDisplayName] = useState('')
   const [notes, setNotes] = useState('')
+  const [monthlySalary, setMonthlySalary] = useState('')
 
   // Check if user is owner/admin (allow access if organization not loaded yet for setup)
   const isOwnerOrAdmin =
@@ -88,6 +89,7 @@ export default function TeamPage() {
           role,
           displayName,
           notes,
+          monthlySalary: monthlySalary ? monthlySalary : null,
         }),
       })
 
@@ -137,6 +139,7 @@ export default function TeamPage() {
     setRole('developer')
     setDisplayName('')
     setNotes('')
+    setMonthlySalary('')
   }
 
   if (!isOwnerOrAdmin) {
@@ -413,6 +416,24 @@ export default function TeamPage() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                     placeholder="John Doe"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Monthly Salary (Optional)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={monthlySalary}
+                    onChange={(e) => setMonthlySalary(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    placeholder="5000.00"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    For team members on monthly salary instead of project-based pay
+                  </p>
                 </div>
 
                 <div>
