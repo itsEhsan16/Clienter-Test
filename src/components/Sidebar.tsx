@@ -219,30 +219,6 @@ export function Sidebar() {
 
         {/* User Section */}
         <div className="border-t border-gray-800 p-4">
-          {!isCollapsed ? (
-            <div className="mb-4">
-              <div className="flex items-center space-x-3 px-2 py-2 rounded-lg bg-zinc-900">
-                <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center">
-                  <span className="text-white font-semibold text-sm">
-                    {displayName.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{displayName}</p>
-                  <p className="text-xs text-gray-400 truncate">{user?.email}</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="mb-4 flex justify-center">
-              <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center">
-                <span className="text-white font-semibold text-sm">
-                  {displayName.charAt(0).toUpperCase()}
-                </span>
-              </div>
-            </div>
-          )}
-
           <div className={`space-y-2 ${isCollapsed ? 'flex flex-col items-center' : ''}`}>
             <button
               onClick={() => setShowNotifications(true)}

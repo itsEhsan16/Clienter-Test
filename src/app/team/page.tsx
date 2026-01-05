@@ -145,11 +145,11 @@ export default function TeamPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
+      <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-6xl mx-auto">
           <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-8"></div>
-            <div className="h-64 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div className="h-8 bg-gray-200 rounded w-1/3 mb-8"></div>
+            <div className="h-64 bg-gray-200 rounded"></div>
           </div>
         </div>
       </div>
@@ -157,11 +157,11 @@ export default function TeamPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-8">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-8 text-gray-900">
       <div className="max-w-6xl mx-auto">
         {/* Setup Notice - Show if organization not loaded */}
         {!organization && (
-          <div className="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-4 rounded">
+          <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
             <div className="flex">
               <div className="flex-shrink-0">
                 <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
@@ -173,10 +173,8 @@ export default function TeamPage() {
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                  Database Setup Required
-                </h3>
-                <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
+                <h3 className="text-sm font-medium text-yellow-800">Database Setup Required</h3>
+                <div className="mt-2 text-sm text-yellow-700">
                   <p>
                     The multi-tenant features require database migrations. Please run the migrations
                     to enable team management:
@@ -185,13 +183,13 @@ export default function TeamPage() {
                     <li>Go to Supabase Dashboard → SQL Editor</li>
                     <li>
                       Run:{' '}
-                      <code className="bg-yellow-100 dark:bg-yellow-900 px-2 py-1 rounded">
+                      <code className="bg-yellow-100 px-2 py-1 rounded">
                         migrations/20260104_create_multi_tenant_structure.sql
                       </code>
                     </li>
                     <li>
                       Run:{' '}
-                      <code className="bg-yellow-100 dark:bg-yellow-900 px-2 py-1 rounded">
+                      <code className="bg-yellow-100 px-2 py-1 rounded">
                         migrations/20260104_migrate_existing_data_to_orgs.sql
                       </code>
                     </li>
@@ -206,12 +204,8 @@ export default function TeamPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              Team Management
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Manage your agency team members and their roles
-            </p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Team Management</h1>
+            <p className="text-gray-600">Manage your agency team members and their roles</p>
           </div>
           <button
             onClick={() => setShowAddModal(true)}
@@ -224,16 +218,12 @@ export default function TeamPage() {
         </div>
 
         {/* Team Members List */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden border border-gray-100">
           {teamMembers.length === 0 ? (
             <div className="p-12 text-center">
-              <UserIcon className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                No team members yet
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                Add your first team member to get started
-              </p>
+              <UserIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No team members yet</h3>
+              <p className="text-gray-600 mb-6">Add your first team member to get started</p>
               <button
                 onClick={() => setShowAddModal(true)}
                 className="inline-flex items-center space-x-2 px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors"
@@ -245,28 +235,28 @@ export default function TeamPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 dark:bg-gray-700">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Member
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Email
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Role
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Joined
                     </th>
                     {organization?.role === 'owner' && (
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
                       </th>
                     )}
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="bg-white divide-y divide-gray-200">
                   {teamMembers.map((member: any) => {
                     const profile = member.profile
                     const displayName =
@@ -277,10 +267,7 @@ export default function TeamPage() {
                     const isCurrentUser = member.user_id === user?.id
 
                     return (
-                      <tr
-                        key={member.id}
-                        className={isCurrentUser ? 'bg-orange-50 dark:bg-orange-900/10' : ''}
-                      >
+                      <tr key={member.id} className={isCurrentUser ? 'bg-orange-50' : ''}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0 h-10 w-10">
@@ -291,21 +278,17 @@ export default function TeamPage() {
                               </div>
                             </div>
                             <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              <div className="text-sm font-medium text-gray-900">
                                 {displayName}
                                 {isCurrentUser && (
-                                  <span className="ml-2 text-xs text-orange-600 dark:text-orange-400">
-                                    (You)
-                                  </span>
+                                  <span className="ml-2 text-xs text-orange-600">(You)</span>
                                 )}
                               </div>
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 dark:text-gray-300">
-                            {profile?.email || 'N/A'}
-                          </div>
+                          <div className="text-sm text-gray-900">{profile?.email || 'N/A'}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
@@ -316,7 +299,7 @@ export default function TeamPage() {
                             {getRoleLabel(member.role)}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {new Date(member.created_at).toLocaleDateString()}
                         </td>
                         {organization?.role === 'owner' && (
@@ -324,7 +307,7 @@ export default function TeamPage() {
                             {!isCurrentUser && member.role !== 'owner' && (
                               <button
                                 onClick={() => handleRemoveMember(member.id, displayName)}
-                                className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors"
+                                className="text-red-600 hover:text-red-900 transition-colors"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -344,18 +327,16 @@ export default function TeamPage() {
       {/* Add Member Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Add Team Member
-                </h2>
+                <h2 className="text-2xl font-bold text-gray-900">Add Team Member</h2>
                 <button
                   onClick={() => {
                     setShowAddModal(false)
                     resetForm()
                   }}
-                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  className="text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -363,7 +344,7 @@ export default function TeamPage() {
 
               <form onSubmit={handleAddMember} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     <div className="flex items-center space-x-2">
                       <Mail className="w-4 h-4" />
                       <span>Email *</span>
@@ -373,14 +354,14 @@ export default function TeamPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                     placeholder="member@example.com"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     <div className="flex items-center space-x-2">
                       <Lock className="w-4 h-4" />
                       <span>Password *</span>
@@ -390,18 +371,18 @@ export default function TeamPage() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                     placeholder="Minimum 6 characters"
                     required
                     minLength={6}
                   />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  <p className="mt-1 text-xs text-gray-500">
                     Share these credentials with your team member
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     <div className="flex items-center space-x-2">
                       <UserIcon className="w-4 h-4" />
                       <span>Role *</span>
@@ -410,7 +391,7 @@ export default function TeamPage() {
                   <select
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                     required
                   >
                     {getAvailableRoles().map((roleOption) => (
@@ -422,20 +403,20 @@ export default function TeamPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Display Name (Optional)
                   </label>
                   <input
                     type="text"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                     placeholder="John Doe"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     <div className="flex items-center space-x-2">
                       <FileText className="w-4 h-4" />
                       <span>Notes (Optional)</span>
@@ -445,7 +426,7 @@ export default function TeamPage() {
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                     placeholder="Any additional information..."
                   />
                 </div>
@@ -457,7 +438,7 @@ export default function TeamPage() {
                       setShowAddModal(false)
                       resetForm()
                     }}
-                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                     disabled={submitting}
                   >
                     Cancel
