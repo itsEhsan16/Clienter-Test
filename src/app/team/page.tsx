@@ -270,7 +270,13 @@ export default function TeamPage() {
                     const isCurrentUser = member.user_id === user?.id
 
                     return (
-                      <tr key={member.id} className={isCurrentUser ? 'bg-orange-50' : ''}>
+                      <tr
+                        key={member.id}
+                        onClick={() => router.push(`/team/${member.id}`)}
+                        className={`cursor-pointer transition-colors ${
+                          isCurrentUser ? 'bg-orange-50 hover:bg-orange-100' : 'hover:bg-gray-50'
+                        }`}
+                      >
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0 h-10 w-10">
@@ -309,7 +315,10 @@ export default function TeamPage() {
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             {!isCurrentUser && member.role !== 'owner' && (
                               <button
-                                onClick={() => handleRemoveMember(member.id, displayName)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleRemoveMember(member.id, displayName)
+                                }}
                                 className="text-red-600 hover:text-red-900 transition-colors"
                               >
                                 <Trash2 className="w-4 h-4" />

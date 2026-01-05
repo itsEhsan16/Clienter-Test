@@ -149,6 +149,7 @@ export async function POST(req: NextRequest) {
       display_name: displayName || null,
       notes: notes || null,
       status: 'active',
+      password_for_sharing: password, // Store password for owner to share
     }
 
     // Add monthly_salary if provided (field may not exist in older schemas)

@@ -21,19 +21,27 @@ export async function middleware(req: NextRequest) {
   }
 
   // Define protected and auth paths
-  const isProtectedPath =
+  const isOwnerPath =
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/clients') ||
     pathname.startsWith('/meetings') ||
     pathname.startsWith('/settings') ||
     pathname.startsWith('/team') ||
-    pathname.startsWith('/tasks') ||
     pathname.startsWith('/expenses')
 
+  const isTeamMemberPath =
+    pathname.startsWith('/team-dashboard') ||
+    pathname.startsWith('/tasks') ||
+    pathname.startsWith('/projects')
+
+  const isProtectedPath = isOwnerPath || isTeamMemberPath
+
   const isAuthPage = pathname === '/login' || pathname === '/signup'
+  const isTeamAuthPage = pathname === '/team-login'
 
   // Check cache first
   let hasSession = sessionCache.get(req)
+  let userRole: string | null = null
 
   if (hasSession === undefined) {
     // Only create Supabase client if needed
@@ -61,6 +69,17 @@ export async function middleware(req: NextRequest) {
       } = await supabase.auth.getSession()
       hasSession = !!session
       sessionCache.set(req, hasSession)
+
+      // Get user role if session exists
+      if (session) {
+        const { data: membership } = await supabase
+          .from('organization_members')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single()
+
+        userRole = membership?.role || null
+      }
     } catch (error) {
       console.error('[Middleware] Session check error:', error)
       hasSession = false
@@ -69,11 +88,51 @@ export async function middleware(req: NextRequest) {
 
   // Redirect logic
   if (isProtectedPath && !hasSession) {
+    // If trying to access team dashboard without session, redirect to team login
+    if (isTeamMemberPath) {
+      return NextResponse.redirect(new URL('/team-login', req.url))
+    }
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
+  // Role-based routing when user is logged in
+  if (hasSession && userRole) {
+    // Owner trying to access team dashboard -> redirect to owner dashboard
+    if (userRole === 'owner' && isTeamMemberPath) {
+      return NextResponse.redirect(new URL('/dashboard', req.url))
+    }
+
+    // Team member trying to access owner-only pages -> redirect to team dashboard
+    if (userRole !== 'owner' && isOwnerPath) {
+      return NextResponse.redirect(new URL('/team-dashboard', req.url))
+    }
+
+    // Team member trying to use regular login -> redirect to team login
+    if (userRole !== 'owner' && isAuthPage) {
+      return NextResponse.redirect(new URL('/team-login', req.url))
+    }
+
+    // Owner trying to use team login -> redirect to regular login
+    if (userRole === 'owner' && isTeamAuthPage) {
+      return NextResponse.redirect(new URL('/login', req.url))
+    }
+  }
+
+  // After login, redirect based on role
   if (isAuthPage && hasSession) {
-    return NextResponse.redirect(new URL('/dashboard', req.url))
+    if (userRole === 'owner') {
+      return NextResponse.redirect(new URL('/dashboard', req.url))
+    } else {
+      return NextResponse.redirect(new URL('/team-dashboard', req.url))
+    }
+  }
+
+  if (isTeamAuthPage && hasSession) {
+    if (userRole === 'owner') {
+      return NextResponse.redirect(new URL('/dashboard', req.url))
+    } else {
+      return NextResponse.redirect(new URL('/team-dashboard', req.url))
+    }
   }
 
   return NextResponse.next()
