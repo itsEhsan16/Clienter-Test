@@ -21,23 +21,73 @@ export async function middleware(req: NextRequest) {
   }
 
   // Define protected and auth paths
-  const isOwnerPath =
-    pathname.startsWith('/dashboard') ||
-    pathname.startsWith('/clients') ||
-    pathname.startsWith('/meetings') ||
-    pathname.startsWith('/settings') ||
-    pathname.startsWith('/team') ||
-    pathname.startsWith('/expenses')
+  const isTeamMemberPath = pathname.startsWith('/teammate')
 
-  const isTeamMemberPath =
-    pathname.startsWith('/team-dashboard') ||
-    pathname.startsWith('/tasks') ||
-    pathname.startsWith('/projects')
+  const isOwnerPath =
+    !isTeamMemberPath &&
+    (pathname.startsWith('/dashboard') ||
+      pathname.startsWith('/clients') ||
+      pathname.startsWith('/meetings') ||
+      pathname.startsWith('/settings') ||
+      pathname.startsWith('/team') ||
+      pathname.startsWith('/expenses') ||
+      pathname.startsWith('/tasks') ||
+      pathname.startsWith('/projects'))
 
   const isProtectedPath = isOwnerPath || isTeamMemberPath
 
   const isAuthPage = pathname === '/login' || pathname === '/signup'
   const isTeamAuthPage = pathname === '/team-login'
+
+  // Allow unauthenticated access to login pages
+  // Only check session to redirect if already logged in
+  if (isAuthPage || isTeamAuthPage) {
+    const res = NextResponse.next()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return req.cookies.getAll()
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              res.cookies.set(name, value, options)
+            })
+          },
+        },
+      }
+    )
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      // If already logged in, redirect to appropriate dashboard
+      if (session) {
+        const { data: membership } = await supabase
+          .from('organization_members')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .maybeSingle()
+
+        const userRole = membership?.role
+
+        if (userRole === 'owner') {
+          return NextResponse.redirect(new URL('/dashboard', req.url))
+        } else if (userRole) {
+          return NextResponse.redirect(new URL('/teammate/dashboard', req.url))
+        }
+      }
+    } catch (error) {
+      console.error('[Middleware] Error checking session for auth page:', error)
+    }
+
+    // Allow access to login page
+    return res
+  }
 
   // Check cache first
   let hasSession = sessionCache.get(req)
@@ -76,7 +126,7 @@ export async function middleware(req: NextRequest) {
           .from('organization_members')
           .select('role')
           .eq('user_id', session.user.id)
-          .single()
+          .maybeSingle()
 
         userRole = membership?.role || null
       }
@@ -84,6 +134,11 @@ export async function middleware(req: NextRequest) {
       console.error('[Middleware] Session check error:', error)
       hasSession = false
     }
+  }
+
+  // Legacy teammate paths: normalize to /teammate/*
+  if (pathname.startsWith('/team-dashboard')) {
+    return NextResponse.redirect(new URL('/teammate/dashboard', req.url))
   }
 
   // Redirect logic
@@ -97,41 +152,20 @@ export async function middleware(req: NextRequest) {
 
   // Role-based routing when user is logged in
   if (hasSession && userRole) {
-    // Owner trying to access team dashboard -> redirect to owner dashboard
+    // Owner trying to access teammate area -> redirect to owner dashboard
     if (userRole === 'owner' && isTeamMemberPath) {
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
 
-    // Team member trying to access owner-only pages -> redirect to team dashboard
+    // Team member trying to access owner-only pages -> send to equivalent teammate page
     if (userRole !== 'owner' && isOwnerPath) {
-      return NextResponse.redirect(new URL('/team-dashboard', req.url))
-    }
-
-    // Team member trying to use regular login -> redirect to team login
-    if (userRole !== 'owner' && isAuthPage) {
-      return NextResponse.redirect(new URL('/team-login', req.url))
-    }
-
-    // Owner trying to use team login -> redirect to regular login
-    if (userRole === 'owner' && isTeamAuthPage) {
-      return NextResponse.redirect(new URL('/login', req.url))
-    }
-  }
-
-  // After login, redirect based on role
-  if (isAuthPage && hasSession) {
-    if (userRole === 'owner') {
-      return NextResponse.redirect(new URL('/dashboard', req.url))
-    } else {
-      return NextResponse.redirect(new URL('/team-dashboard', req.url))
-    }
-  }
-
-  if (isTeamAuthPage && hasSession) {
-    if (userRole === 'owner') {
-      return NextResponse.redirect(new URL('/dashboard', req.url))
-    } else {
-      return NextResponse.redirect(new URL('/team-dashboard', req.url))
+      if (pathname.startsWith('/tasks')) {
+        return NextResponse.redirect(new URL('/teammate/tasks', req.url))
+      }
+      if (pathname.startsWith('/projects')) {
+        return NextResponse.redirect(new URL('/teammate/projects', req.url))
+      }
+      return NextResponse.redirect(new URL('/teammate/dashboard', req.url))
     }
   }
 

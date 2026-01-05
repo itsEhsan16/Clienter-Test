@@ -16,6 +16,8 @@ import {
 import { createBrowserClient } from '@supabase/ssr'
 import toast from 'react-hot-toast'
 
+import Image from 'next/image'
+
 interface TeamMemberLayoutProps {
   children: React.ReactNode
 }
@@ -24,7 +26,8 @@ export default function TeamMemberLayout({ children }: TeamMemberLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { user, organization } = useAuth()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Sidebar is open by default; toggle works for both desktop and mobile
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -44,22 +47,22 @@ export default function TeamMemberLayout({ children }: TeamMemberLayoutProps) {
   const navigation = [
     {
       name: 'Dashboard',
-      href: '/team-dashboard',
+      href: '/teammate/dashboard',
       icon: LayoutDashboard,
     },
     {
       name: 'My Tasks',
-      href: '/tasks',
+      href: '/teammate/tasks',
       icon: CheckSquare,
     },
     {
       name: 'My Projects',
-      href: '/projects',
+      href: '/teammate/projects',
       icon: Briefcase,
     },
     {
       name: 'Team',
-      href: '/team-view',
+      href: '/teammate/team',
       icon: Users,
     },
   ]
@@ -76,6 +79,15 @@ export default function TeamMemberLayout({ children }: TeamMemberLayoutProps) {
         />
       )}
 
+      {/* Sidebar Toggle (always visible) */}
+      <button
+        onClick={() => setSidebarOpen((prev) => !prev)}
+        className="fixed top-4 left-4 z-50 p-3 rounded-full bg-orange-500 text-white shadow-lg hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300"
+        aria-label="Toggle sidebar"
+      >
+        {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+      </button>
+
       {/* Sidebar */}
       <aside
         className={`fixed top-0 left-0 h-full w-64 bg-gray-900 text-white transform transition-transform duration-300 ease-in-out z-50 lg:translate-x-0 ${
@@ -86,9 +98,7 @@ export default function TeamMemberLayout({ children }: TeamMemberLayoutProps) {
         <div className="p-6 border-b border-gray-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-xl">C</span>
-              </div>
+              <Image src="/logo.png" alt="Clienter Logo" width={40} height={40} className='rounded-md' />
               <div>
                 <h1 className="text-xl font-bold">Clienter</h1>
                 <p className="text-xs text-gray-400">Team Member</p>
@@ -154,7 +164,7 @@ export default function TeamMemberLayout({ children }: TeamMemberLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <div className="lg:ml-64">
+      <div>
         {/* Mobile Header */}
         <header className="lg:hidden bg-white border-b border-gray-200 p-4">
           <div className="flex items-center justify-between">
@@ -175,7 +185,8 @@ export default function TeamMemberLayout({ children }: TeamMemberLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main>{children}</main>
+        {/* Keep desktop content offset stable to avoid layout jumps when toggling */}
+        <main className="transition-all duration-300 lg:pl-64">{children}</main>
       </div>
     </div>
   )

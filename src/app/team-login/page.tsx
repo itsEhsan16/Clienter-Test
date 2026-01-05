@@ -34,24 +34,55 @@ export default function TeamLoginPage() {
         // Check if user is a team member (not owner)
         const { data: membership, error: membershipError } = await supabase
           .from('organization_members')
-          .select('role, organization_id, display_name')
+          .select('role, organization_id, display_name, status')
           .eq('user_id', data.user.id)
-          .single()
+          .maybeSingle()
+
+        console.log('Membership query result:', { membership, membershipError })
 
         if (membershipError) {
           await supabase.auth.signOut()
-          throw new Error('Account not found. Please contact your organization owner.')
+          console.error('Membership error:', membershipError)
+          throw new Error('Database error: ' + membershipError.message)
+        }
+
+        if (!membership) {
+          await supabase.auth.signOut()
+          throw new Error(
+            'Your account is not associated with any organization. Please contact your administrator to add you as a team member.'
+          )
+        }
+
+        if (membership.status !== 'active') {
+          await supabase.auth.signOut()
+          throw new Error('Your account is inactive. Please contact your organization owner.')
         }
 
         if (membership.role === 'owner') {
           await supabase.auth.signOut()
           toast.error('Owners should use the regular login page')
-          router.push('/login')
+          setTimeout(() => router.push('/login'), 500)
           return
         }
 
+        // Set httpOnly cookies for server-side middleware/SSR
+        try {
+          await fetch('/api/auth/set-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+              expires_at: data.session.expires_at,
+              expires_in: data.session.expires_in ?? 3600,
+            }),
+          })
+        } catch (cookieError) {
+          console.warn('[Team Login] Failed to call set-session API:', cookieError)
+        }
+
         toast.success(`Welcome back, ${membership.display_name || 'Team Member'}!`)
-        router.push('/team-dashboard')
+        router.push('/teammate/dashboard')
       }
     } catch (error: any) {
       console.error('Login error:', error)

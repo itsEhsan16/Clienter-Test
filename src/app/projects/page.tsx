@@ -152,31 +152,31 @@ export default function ProjectsPage() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="card">
+        <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 mb-1">Total Projects</p>
               <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
             </div>
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <FolderKanban className="text-blue-600" size={24} />
+            <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-blue-100">
+              <FolderKanban className="text-blue-600" size={20} />
             </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 mb-1">In Progress</p>
               <p className="text-2xl font-bold text-gray-900">{stats.inProgress}</p>
             </div>
-            <div className="p-3 bg-yellow-100 rounded-lg">
-              <TrendingUp className="text-yellow-600" size={24} />
+            <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-yellow-100">
+              <TrendingUp className="text-yellow-600" size={20} />
             </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 mb-1">Total Budget</p>
@@ -184,20 +184,20 @@ export default function ProjectsPage() {
                 {formatCurrency(stats.totalBudget)}
               </p>
             </div>
-            <div className="p-3 bg-purple-100 rounded-lg">
-              <DollarSign className="text-purple-600" size={24} />
+            <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-purple-100">
+              <DollarSign className="text-purple-600" size={20} />
             </div>
           </div>
         </div>
 
-        <div className="card">
+        <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 mb-1">Total Paid</p>
               <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalPaid)}</p>
             </div>
-            <div className="p-3 bg-green-100 rounded-lg">
-              <DollarSign className="text-green-600" size={24} />
+            <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-green-100">
+              <DollarSign className="text-green-600" size={20} />
             </div>
           </div>
         </div>

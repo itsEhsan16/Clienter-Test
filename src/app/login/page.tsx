@@ -72,6 +72,23 @@ function LoginForm() {
 
       if (data.session) {
         console.log('✅ Login successful, setting server cookies...')
+
+        // Check if user is a team member (not owner)
+        const { data: membership } = await supabase
+          .from('organization_members')
+          .select('role')
+          .eq('user_id', data.user.id)
+          .maybeSingle()
+
+        // If user is a team member (not owner), redirect to team login
+        if (membership && membership.role !== 'owner') {
+          await supabase.auth.signOut()
+          setError('Team members should use the team login page.')
+          setLoading(false)
+          setTimeout(() => router.push('/team-login'), 2000)
+          return
+        }
+
         // Ensure httpOnly cookies are set for middleware/SSR via our API
         try {
           await fetch('/api/auth/set-session', {

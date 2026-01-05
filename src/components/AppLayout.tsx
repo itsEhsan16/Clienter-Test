@@ -11,9 +11,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isAuthPage =
     pathname?.startsWith('/login') ||
     pathname?.startsWith('/signup') ||
-    pathname?.startsWith('/auth')
+    pathname?.startsWith('/auth') ||
+    pathname?.startsWith('/team-login')
 
-  if (isAuthPage) {
+  // Team member surfaces use their own layout/sidebar; avoid stacking owner layout
+  const isTeamMemberPage =
+    pathname?.startsWith('/teammate') || pathname?.startsWith('/team-dashboard')
+
+  if (isAuthPage || isTeamMemberPage) {
     return <>{children}</>
   }
 
