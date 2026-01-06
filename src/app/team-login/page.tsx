@@ -1,75 +1,117 @@
 'use client'
 
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Mail, Lock, Loader2, Users } from 'lucide-react'
-import { createBrowserClient } from '@supabase/ssr'
 import toast from 'react-hot-toast'
+import { supabase } from '@/lib/supabase'
 
 export default function TeamLoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  // If a session already exists, route to the right dashboard
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('account_type')
+          .eq('id', session.user.id)
+          .maybeSingle()
+
+        if (profile?.account_type === 'owner') {
+          router.replace('/dashboard')
+        } else {
+          router.replace('/teammate/dashboard')
+        }
+      }
+    }
+
+    checkExistingSession()
+  }, [router])
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    console.log('[Team Login] ========== FORM SUBMITTED ==========')
     setLoading(true)
+    setErrorMessage('')
 
     try {
+      const trimmedEmail = email.trim().toLowerCase()
+      console.log('[Team Login] Attempting sign-in for:', trimmedEmail)
+
       // Sign in with Supabase
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: trimmedEmail,
         password,
       })
 
-      if (error) throw error
+      console.log('[Team Login] Sign-in response:', {
+        hasSession: !!data?.session,
+        hasUser: !!data?.user,
+        error: error?.message,
+      })
+
+      if (error) {
+        console.error('[Team Login] Supabase sign-in error:', error)
+        throw error
+      }
+
+      if (!data.session || !data.user) {
+        throw new Error('Login failed: no session returned from Supabase.')
+      }
+
+      console.log('[Team Login] Fetching profile and membership...')
 
       if (data.session) {
-        // CRITICAL: Check account_type first to ensure this is a team member
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('account_type, full_name')
-          .eq('id', data.user.id)
-          .single()
+        // Get profile (may have legacy owner flag) and membership together
+        const [
+          { data: profile, error: profileError },
+          { data: memberships, error: membershipError },
+        ] = await Promise.all([
+          supabase
+            .from('profiles')
+            .select('account_type, full_name')
+            .eq('id', data.user.id)
+            .single(),
+          supabase
+            .from('organization_members')
+            .select('role, organization_id, display_name, status')
+            .eq('user_id', data.user.id)
+            .eq('status', 'active')
+            .order('created_at', { ascending: true })
+            .limit(1),
+        ])
+
+        console.log('[Team Login] Data fetched:', {
+          profile: profile?.account_type,
+          profileError: profileError?.message,
+          membershipCount: memberships?.length,
+          membershipError: membershipError?.message,
+        })
 
         if (profileError || !profile) {
+          console.error('[Team Login] Profile check failed')
           await supabase.auth.signOut()
           throw new Error('Unable to verify account type. Please contact support.')
         }
 
-        // Owners cannot login via team login page
-        if (profile.account_type === 'owner') {
-          await supabase.auth.signOut()
-          toast.error('Agency owners must use the main login page')
-          setTimeout(() => router.push('/login'), 1500)
-          return
-        }
-
-        // Check if user is a team member (not owner)
-        // Get the first active membership if multiple exist
-        const { data: memberships, error: membershipError } = await supabase
-          .from('organization_members')
-          .select('role, organization_id, display_name, status')
-          .eq('user_id', data.user.id)
-          .eq('status', 'active')
-          .order('created_at', { ascending: true })
-          .limit(1)
-
-        console.log('Membership query result:', { memberships, membershipError })
-
         if (membershipError) {
+          console.error('[Team Login] Membership error:', membershipError)
           await supabase.auth.signOut()
-          console.error('Membership error:', membershipError)
           throw new Error('Database error: ' + membershipError.message)
         }
 
         if (!memberships || memberships.length === 0) {
+          console.error('[Team Login] No membership found')
           await supabase.auth.signOut()
           throw new Error(
             'Your account is not associated with any active organization. Please contact your administrator to add you as a team member.'
@@ -77,22 +119,84 @@ export default function TeamLoginPage() {
         }
 
         const membership = memberships[0]
+        console.log('[Team Login] Membership found:', {
+          role: membership.role,
+          status: membership.status,
+          displayName: membership.display_name,
+        })
 
         if (membership.status !== 'active') {
+          console.error('[Team Login] Membership inactive')
           await supabase.auth.signOut()
           throw new Error('Your account is inactive. Please contact your organization owner.')
         }
 
-        if (membership.role === 'owner') {
+        // Determine actual role: trust profile.account_type when explicitly set to team_member
+        let actualRole: string
+        if (profile.account_type === 'team_member') {
+          // Profile explicitly says team_member, trust it
+          actualRole = 'team_member'
+          console.log('[Team Login] Profile says team_member, using that role')
+
+          // Fix inconsistent membership role if needed
+          if (membership.role === 'owner') {
+            console.log(
+              '[Team Login] Fixing inconsistent membership role from owner to team member'
+            )
+            await supabase
+              .from('organization_members')
+              .update({ role: 'member' })
+              .eq('user_id', data.user.id)
+              .eq('organization_id', membership.organization_id)
+          }
+        } else {
+          // Use membership role
+          actualRole = membership.role === 'owner' ? 'owner' : 'team_member'
+          console.log('[Team Login] Using membership role:', actualRole)
+        }
+
+        if (actualRole === 'owner') {
+          console.warn('[Team Login] Owner attempted team login')
           await supabase.auth.signOut()
-          toast.error('Owners should use the regular login page')
-          setTimeout(() => router.push('/login'), 500)
+          toast.error('Agency owners must use the main login page')
+          setTimeout(() => router.push('/login'), 1500)
           return
         }
 
-        // Set httpOnly cookies for server-side middleware/SSR
+        console.log('[Team Login] User is team member, proceeding...')
+
+        // Ensure profile is marked as team_member
+        if (profile.account_type !== 'team_member') {
+          console.log('[Team Login] Updating profile account_type to team_member')
+          await supabase
+            .from('profiles')
+            .update({ account_type: 'team_member' })
+            .eq('id', data.user.id)
+        }
+
+        console.log('[Team Login] Persisting session...')
+
+        // Persist both client and httpOnly cookies; fail fast if cookie API fails
         try {
-          await fetch('/api/auth/set-session', {
+          await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          })
+
+          console.log('[Team Login] Client session set, verifying...')
+
+          // Verify session was set
+          const {
+            data: { session: verifySession },
+          } = await supabase.auth.getSession()
+          console.log('[Team Login] Session verification:', {
+            hasSession: !!verifySession,
+            userId: verifySession?.user?.id,
+          })
+
+          console.log('[Team Login] Calling cookie API...')
+
+          const cookieRes = await fetch('/api/auth/set-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -102,16 +206,33 @@ export default function TeamLoginPage() {
               expires_in: data.session.expires_in ?? 3600,
             }),
           })
+
+          console.log('[Team Login] Cookie API response:', {
+            ok: cookieRes.ok,
+            status: cookieRes.status,
+          })
+
+          if (!cookieRes.ok) {
+            throw new Error('Failed to persist session cookies. Please try again.')
+          }
+
+          console.log('[Team Login] Session persisted successfully')
         } catch (cookieError) {
-          console.warn('[Team Login] Failed to call set-session API:', cookieError)
+          console.error('[Team Login] Failed to persist session:', cookieError)
+          throw new Error('Login succeeded but session could not be saved. Please try again.')
         }
 
+        console.log('[Team Login] Redirecting to /teammate/dashboard...')
         toast.success(`Welcome back, ${membership.display_name || 'Team Member'}!`)
-        router.push('/teammate/dashboard')
+
+        // Use window.location for hard navigation to ensure middleware runs
+        window.location.href = '/teammate/dashboard'
       }
     } catch (error: any) {
       console.error('Login error:', error)
-      toast.error(error.message || 'Failed to login')
+      const message = error?.message || 'Failed to login'
+      setErrorMessage(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -132,6 +253,12 @@ export default function TeamLoginPage() {
         {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {errorMessage && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">
+                {errorMessage}
+              </div>
+            )}
+
             {/* Email Field */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">

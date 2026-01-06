@@ -24,7 +24,17 @@ function LoginForm() {
         data: { session },
       } = await supabase.auth.getSession()
       if (session) {
-        router.replace('/dashboard')
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('account_type')
+          .eq('id', session.user.id)
+          .maybeSingle()
+
+        if (profile?.account_type === 'team_member') {
+          router.replace('/teammate/dashboard')
+        } else {
+          router.replace('/dashboard')
+        }
       }
     }
     checkSession()
@@ -59,13 +69,22 @@ function LoginForm() {
     setSuccess('')
 
     try {
+      const trimmedEmail = email.trim().toLowerCase()
+
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: trimmedEmail,
         password,
       })
 
       if (error) {
+        console.error('[Login] Supabase sign-in error:', error)
         setError(error.message)
+        setLoading(false)
+        return
+      }
+
+      if (!data.session || !data.user) {
+        setError('Login failed: no session returned from Supabase.')
         setLoading(false)
         return
       }
@@ -96,9 +115,14 @@ function LoginForm() {
           return
         }
 
-        // Ensure httpOnly cookies are set for middleware/SSR via our API
+        // Persist client session and httpOnly cookies; fail if cookies cannot be written
         try {
-          await fetch('/api/auth/set-session', {
+          await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          })
+
+          const cookieRes = await fetch('/api/auth/set-session', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -108,8 +132,15 @@ function LoginForm() {
               expires_in: data.session.expires_in ?? 3600,
             }),
           })
+
+          if (!cookieRes.ok) {
+            throw new Error('Failed to persist session cookies. Please try again.')
+          }
         } catch (e) {
-          console.warn('[Login] Failed to call set-session API:', e)
+          console.error('[Login] Failed to persist session:', e)
+          setError('Login succeeded but session could not be saved. Please try again.')
+          setLoading(false)
+          return
         }
 
         // Always redirect to dashboard

@@ -5,6 +5,26 @@ import { createServerClient } from '@supabase/ssr'
 // Cache for session checks (in-memory, per request cycle)
 const sessionCache = new WeakMap<NextRequest, boolean>()
 
+async function inferRoleFromMembership(
+  supabase: ReturnType<typeof createServerClient>,
+  userId: string
+): Promise<string | null> {
+  try {
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('role, status')
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .maybeSingle()
+
+    if (!membership) return null
+    return membership.role === 'owner' ? 'owner' : 'team_member'
+  } catch (error) {
+    console.error('[Middleware] Failed to infer role from membership:', error)
+    return null
+  }
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
@@ -73,13 +93,25 @@ export async function middleware(req: NextRequest) {
           .eq('id', session.user.id)
           .maybeSingle()
 
-        const accountType = profile?.account_type
+        let accountType = profile?.account_type
+        if (accountType !== 'team_member' && accountType !== 'owner') {
+          accountType = await inferRoleFromMembership(supabase, session.user.id)
+        }
+
+        // Handle legacy profiles marked as owner but membership is team role
+        if (accountType === 'owner') {
+          const inferred = await inferRoleFromMembership(supabase, session.user.id)
+          if (inferred === 'team_member') {
+            accountType = 'team_member'
+          }
+        }
 
         if (accountType === 'owner') {
           return NextResponse.redirect(new URL('/dashboard', req.url))
-        } else if (accountType === 'team_member') {
-          return NextResponse.redirect(new URL('/teammate/dashboard', req.url))
         }
+
+        // Default team member (or unknown) away from auth pages
+        return NextResponse.redirect(new URL('/teammate/dashboard', req.url))
       }
     } catch (error) {
       console.error('[Middleware] Error checking session for auth page:', error)
@@ -129,6 +161,23 @@ export async function middleware(req: NextRequest) {
           .maybeSingle()
 
         userRole = profile?.account_type || null
+
+        if (userRole !== 'team_member' && userRole !== 'owner') {
+          userRole = await inferRoleFromMembership(supabase, session.user.id)
+        }
+
+        if (userRole === 'owner') {
+          const inferred = await inferRoleFromMembership(supabase, session.user.id)
+          if (inferred === 'team_member') {
+            userRole = 'team_member'
+          }
+        }
+
+        console.log('[Middleware] Session found:', {
+          userId: session.user.id,
+          email: session.user.email,
+          userRole,
+        })
       }
     } catch (error) {
       console.error('[Middleware] Session check error:', error)
@@ -142,7 +191,17 @@ export async function middleware(req: NextRequest) {
   }
 
   // Redirect logic
+  console.log('[Middleware] Protected path check:', {
+    pathname,
+    hasSession,
+    userRole,
+    isProtectedPath,
+    isTeamMemberPath,
+    isOwnerPath,
+  })
+
   if (isProtectedPath && !hasSession) {
+    console.log('[Middleware] No session, redirecting to login')
     // If trying to access team dashboard without session, redirect to team login
     if (isTeamMemberPath) {
       return NextResponse.redirect(new URL('/team-login', req.url))

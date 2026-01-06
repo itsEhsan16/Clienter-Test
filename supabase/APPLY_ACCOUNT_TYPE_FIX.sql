@@ -110,5 +110,5 @@ COMMENT ON COLUMN profiles.account_type IS 'Determines login access: owners use 
 -- 3. Check for any profiles without account_type (should be 0)
 -- SELECT COUNT(*) as profiles_without_account_type FROM profiles WHERE account_type IS NULL;
 
-RAISE NOTICE 'Account type migration completed successfully!';
-RAISE NOTICE 'Run the verification queries above to confirm everything is correct.';
+-- Migration completed successfully!
+-- Uncomment and run the verification queries above to confirm everything is correct.
