@@ -37,7 +37,6 @@ interface Expense {
     name: string
     clients: {
       name: string
-      company_name: string | null
     }
   }
   project_team_members?: {
@@ -66,7 +65,6 @@ interface AssignedProject {
   total_paid: number
   clients: {
     name: string
-    company_name: string | null
   }
 }
 
@@ -131,7 +129,7 @@ function ExpensesPageContent() {
           projects (
             id,
             name,
-            clients (name, company_name)
+            clients (name)
           )
         `
         )
@@ -164,7 +162,7 @@ function ExpensesPageContent() {
           *,
           projects (
             name,
-            clients (name, company_name)
+            clients (name)
           ),
           project_team_members (
             profiles (full_name, email)
@@ -504,9 +502,7 @@ function ExpensesPageContent() {
                       {expense.expense_type === 'team' && expense.projects ? (
                         <div className="text-sm">
                           <div className="font-medium text-gray-900">{expense.projects.name}</div>
-                          <div className="text-gray-500">
-                            {expense.projects.clients.company_name || expense.projects.clients.name}
-                          </div>
+                          <div className="text-gray-500">{expense.projects.clients.name}</div>
                           {expense.project_team_members && (
                             <div className="text-gray-500">
                               {expense.project_team_members.profiles.full_name}
@@ -674,7 +670,7 @@ function ExpensesPageContent() {
                       <option value="">Select a project</option>
                       {assignedProjects.map((project) => (
                         <option key={project.id} value={project.id}>
-                          {project.name} - {project.clients.company_name || project.clients.name}
+                          {project.name} - {project.clients.name}
                         </option>
                       ))}
                     </select>
