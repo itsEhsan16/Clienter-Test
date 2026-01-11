@@ -316,10 +316,10 @@ export default function ClientDetailPage() {
                     <h1 className="text-3xl font-bold text-gray-900">{client.name}</h1>
                     <span
                       className={`px-3 py-1 rounded-full text-sm font-medium ${getClientStatusColor(
-                        client.status
+                        client.status || 'new'
                       )}`}
                     >
-                      {getClientStatusLabel(client.status)}
+                      {getClientStatusLabel(client.status || 'new')}
                     </span>
                   </div>
                   {client.total_amount && (

@@ -128,9 +128,8 @@ export default function ClientsPage() {
       completed: [],
     }
     filteredClients.forEach((client) => {
-      if (grouped[client.status]) {
-        grouped[client.status].push(client)
-      }
+      const s = client.status || 'new'
+      grouped[s].push(client)
     })
     return grouped
   }, [filteredClients])
@@ -346,10 +345,10 @@ export default function ClientsPage() {
                     <h3 className="font-semibold text-gray-900">{client.name}</h3>
                     <span
                       className={`px-2 py-1 text-xs rounded-full ${getClientStatusColor(
-                        client.status
+                        client.status || 'new'
                       )}`}
                     >
-                      {getClientStatusLabel(client.status)}
+                      {getClientStatusLabel(client.status || 'new')}
                     </span>
                   </div>
                   {client.phone && (
@@ -361,9 +360,9 @@ export default function ClientsPage() {
                   {client.project_description && (
                     <p className="text-sm text-gray-600 mb-2">{client.project_description}</p>
                   )}
-                  {client.budget && (
+                  {(client as any)?.budget != null && (
                     <p className="text-sm font-medium text-gray-900">
-                      Budget: {formatCurrency(client.budget, profile?.currency || 'INR')}
+                      Budget: {formatCurrency((client as any).budget, profile?.currency || 'INR')}
                     </p>
                   )}
                 </Link>

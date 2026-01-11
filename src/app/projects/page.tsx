@@ -3,62 +3,83 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { toast } from 'react-hot-toast'
-import { Plus, FolderKanban, Users, DollarSign, TrendingUp, Search, Filter } from 'lucide-react'
-import { formatCurrency } from '@/lib/utils'
+import { Plus, FolderKanban, DollarSign, TrendingUp, Search, Download } from 'lucide-react'
+import { formatCurrency, exportToCSV, exportToJSON } from '@/lib/utils'
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+} from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { KanbanColumn } from '@/components/KanbanColumn'
+import { ProjectKanbanCard } from '@/components/ProjectKanbanCard'
+import type { Project as DBProject, ProjectStatus } from '@/types/database'
 
 interface Project {
   id: string
   name: string
   description: string | null
   client_id: string
-  status: 'planning' | 'in_progress' | 'on_hold' | 'completed' | 'cancelled'
-  budget: number
+  status: ProjectStatus
+  budget: number | null
   total_paid: number
   start_date: string | null
   deadline: string | null
+  order: number
   created_at: string
+  // Additional fields from the database schema expected by components
+  organization_id?: string | null
+  completed_at: string | null
+  created_by?: string | null
+  updated_at?: string | null
   clients: {
-    name: string
-    company_name: string | null
-  }
-  project_team_members: {
     id: string
-    allocated_budget: number
-    total_paid: number
-  }[]
+    name: string
+    phone: string | null
+  }
+  team_member_count?: number
 }
 
+const STATUSES: ProjectStatus[] = ['new', 'ongoing', 'completed']
+
 export default function ProjectsPage() {
-  const { user } = useAuth()
+  const { user, profile, supabase } = useAuth()
   const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [activeId, setActiveId] = useState<string | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  )
 
   useEffect(() => {
-    if (user) {
+    if (user && supabase) {
       fetchProjects()
     }
-  }, [user])
+  }, [user, supabase])
 
   const fetchProjects = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('projects')
-        .select(
-          `
-          *,
-          clients (name, company_name),
-          project_team_members (id, allocated_budget, total_paid)
-        `
-        )
-        .order('created_at', { ascending: false })
 
-      if (error) throw error
+      // Use API route for fetching projects
+      const response = await fetch('/api/projects')
+      if (!response.ok) throw new Error('Failed to fetch projects')
+
+      const { projects: data } = await response.json()
       setProjects(data || [])
     } catch (error: any) {
       console.error('Error fetching projects:', error)
@@ -68,55 +89,159 @@ export default function ProjectsPage() {
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'planning':
-        return 'bg-gray-100 text-gray-800'
-      case 'in_progress':
-        return 'bg-blue-100 text-blue-800'
-      case 'on_hold':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'completed':
-        return 'bg-green-100 text-green-800'
-      case 'cancelled':
-        return 'bg-red-100 text-red-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string)
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event
+    if (!over) return
+
+    const activeId = active.id as string
+    const overId = over.id as string
+
+    const activeProject = projects.find((p) => p.id === activeId)
+    const overProject = projects.find((p) => p.id === overId)
+
+    if (!activeProject) return
+
+    const activeStatus = activeProject.status
+    const overStatus = STATUSES.includes(overId as ProjectStatus)
+      ? (overId as ProjectStatus)
+      : overProject?.status
+
+    if (!overStatus || activeStatus === overStatus) return
+
+    // Update project status in state
+    setProjects((prev) => {
+      const updated = prev.map((p) => (p.id === activeId ? { ...p, status: overStatus } : p))
+      return updated
+    })
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+    setActiveId(null)
+
+    if (!over) return
+
+    const activeId = active.id as string
+    const overId = over.id as string
+
+    const activeProject = projects.find((p) => p.id === activeId)
+    const overProject = projects.find((p) => p.id === overId)
+
+    if (!activeProject) return
+
+    // Determine new status
+    let newStatus = activeProject.status
+    if (STATUSES.includes(overId as ProjectStatus)) {
+      newStatus = overId as ProjectStatus
+    } else if (overProject) {
+      newStatus = overProject.status
+    }
+
+    // Get projects in the new status
+    const statusProjects = projects.filter((p) => p.status === newStatus)
+    const oldIndex = statusProjects.findIndex((p) => p.id === activeId)
+    const newIndex = statusProjects.findIndex((p) => p.id === overId)
+
+    if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+      // Reorder within same status
+      const reordered = arrayMove(statusProjects, oldIndex, newIndex)
+      const updatedProjects = projects.map((p) => {
+        if (p.status === newStatus) {
+          const index = reordered.findIndex((rp) => rp.id === p.id)
+          return { ...p, order: index }
+        }
+        return p
+      })
+      setProjects(updatedProjects)
+
+      // Update order in database
+      try {
+        for (const project of reordered) {
+          const index = reordered.findIndex((p) => p.id === project.id)
+          await fetch(`/api/projects/${project.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order: index }),
+          })
+        }
+      } catch (error) {
+        console.error('Error updating order:', error)
+        toast.error('Failed to update order')
+        fetchProjects() // Refresh
+      }
+    }
+
+    // Update status if changed
+    if (newStatus !== activeProject.status) {
+      try {
+        const response = await fetch(`/api/projects/${activeId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus }),
+        })
+
+        if (!response.ok) throw new Error('Failed to update status')
+
+        toast.success(`Project moved to ${newStatus}`)
+      } catch (error) {
+        console.error('Error updating status:', error)
+        toast.error('Failed to update project status')
+        fetchProjects() // Refresh to correct state
+      }
     }
   }
 
-  const getStatusLabel = (status: string) => {
-    return status
-      .split('_')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ')
-  }
-
-  const calculateProgress = (totalPaid: number, budget: number) => {
-    if (budget === 0) return 0
-    return Math.min((totalPaid / budget) * 100, 100)
-  }
-
   const filteredProjects = projects.filter((project) => {
-    const matchesSearch =
-      project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.clients.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (project.clients.company_name &&
-        project.clients.company_name.toLowerCase().includes(searchTerm.toLowerCase()))
-
-    const matchesStatus = statusFilter === 'all' || project.status === statusFilter
-
-    return matchesSearch && matchesStatus
+    const searchLower = searchTerm.toLowerCase()
+    return (
+      project.name.toLowerCase().includes(searchLower) ||
+      project.clients.name.toLowerCase().includes(searchLower) ||
+      (project.description && project.description.toLowerCase().includes(searchLower))
+    )
   })
+
+  const projectsByStatus = STATUSES.reduce((acc, status) => {
+    acc[status] = filteredProjects
+      .filter((p) => p.status === status)
+      .sort((a, b) => a.order - b.order)
+    return acc
+  }, {} as Record<ProjectStatus, Project[]>)
 
   // Calculate stats
   const stats = {
     total: projects.length,
-    inProgress: projects.filter((p) => p.status === 'in_progress').length,
+    ongoing: projects.filter((p) => p.status === 'ongoing').length,
     completed: projects.filter((p) => p.status === 'completed').length,
-    totalBudget: projects.reduce((sum, p) => sum + p.budget, 0),
+    totalBudget: projects.reduce((sum, p) => sum + (p.budget || 0), 0),
     totalPaid: projects.reduce((sum, p) => sum + p.total_paid, 0),
   }
+
+  const handleExportCSV = () => {
+    const data = projects.map((p) => ({
+      Name: p.name,
+      Client: p.clients.name,
+      Status: p.status,
+      Budget: p.budget || 0,
+      'Total Paid': p.total_paid,
+      Pending: (p.budget || 0) - p.total_paid,
+      'Team Members': p.team_member_count || 0,
+      Deadline: p.deadline || 'N/A',
+      Created: new Date(p.created_at).toLocaleDateString(),
+    }))
+    exportToCSV(data, 'projects')
+    toast.success('Projects exported to CSV')
+  }
+
+  const handleExportJSON = () => {
+    exportToJSON(projects, 'projects')
+    toast.success('Projects exported to JSON')
+  }
+
+  const activeProject = activeId ? projects.find((p) => p.id === activeId) : null
 
   if (loading) {
     return (
@@ -167,11 +292,11 @@ export default function ProjectsPage() {
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 mb-1">In Progress</p>
-              <p className="text-2xl font-bold text-gray-900">{stats.inProgress}</p>
+              <p className="text-sm text-gray-600 mb-1">Ongoing</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.ongoing}</p>
             </div>
-            <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-yellow-100">
-              <TrendingUp className="text-yellow-600" size={20} />
+            <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-blue-100">
+              <TrendingUp className="text-blue-600" size={20} />
             </div>
           </div>
         </div>
@@ -181,7 +306,7 @@ export default function ProjectsPage() {
             <div>
               <p className="text-sm text-gray-600 mb-1">Total Budget</p>
               <p className="text-2xl font-bold text-gray-900">
-                {formatCurrency(stats.totalBudget)}
+                {formatCurrency(stats.totalBudget, profile?.currency || 'INR')}
               </p>
             </div>
             <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-purple-100">
@@ -194,7 +319,9 @@ export default function ProjectsPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 mb-1">Total Paid</p>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalPaid)}</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {formatCurrency(stats.totalPaid, profile?.currency || 'INR')}
+              </p>
             </div>
             <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-green-100">
               <DollarSign className="text-green-600" size={20} />
@@ -203,117 +330,83 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Search and Export */}
       <div className="card mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
+        <div className="flex flex-col md:flex-row gap-4 items-center">
+          <div className="flex-1 relative w-full">
             <Search
               className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
               size={20}
             />
             <input
               type="text"
-              placeholder="Search projects or clients..."
+              placeholder="Search projects, clients, or descriptions..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="input pl-10 w-full"
             />
           </div>
-          <div className="relative">
-            <Filter
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-              size={20}
-            />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="input pl-10 pr-8 appearance-none"
-            >
-              <option value="all">All Status</option>
-              <option value="planning">Planning</option>
-              <option value="in_progress">In Progress</option>
-              <option value="on_hold">On Hold</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
+          <div className="flex gap-2">
+            <button onClick={handleExportCSV} className="btn-secondary flex items-center gap-2">
+              <Download size={16} />
+              Export CSV
+            </button>
+            <button onClick={handleExportJSON} className="btn-secondary flex items-center gap-2">
+              <Download size={16} />
+              Export JSON
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Projects Grid */}
-      {filteredProjects.length === 0 ? (
-        <div className="card text-center py-12">
-          <FolderKanban className="mx-auto text-gray-400 mb-4" size={48} />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No projects found</h3>
-          <p className="text-gray-600 mb-4">
-            {searchTerm || statusFilter !== 'all'
-              ? 'Try adjusting your filters'
-              : 'Get started by creating your first project'}
-          </p>
-          {!searchTerm && statusFilter === 'all' && (
-            <button onClick={() => router.push('/projects/new')} className="btn-primary mx-auto">
-              Create Project
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProjects.map((project) => (
-            <div
-              key={project.id}
-              onClick={() => router.push(`/projects/${project.id}`)}
-              className="card hover:shadow-lg transition-shadow cursor-pointer"
+      {/* Kanban Board */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {STATUSES.map((status) => (
+            <KanbanColumn
+              key={status}
+              id={status}
+              title={status.charAt(0).toUpperCase() + status.slice(1)}
             >
-              {/* Header */}
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 mb-1 line-clamp-1">{project.name}</h3>
-                  <p className="text-sm text-gray-600 line-clamp-1">
-                    {project.clients.company_name || project.clients.name}
-                  </p>
+              <SortableContext
+                items={projectsByStatus[status].map((p) => p.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-3">
+                  {projectsByStatus[status].map((project) => (
+                    <ProjectKanbanCard
+                      key={project.id}
+                      project={project as any}
+                      currency={profile?.currency || 'INR'}
+                    />
+                  ))}
+                  {projectsByStatus[status].length === 0 && (
+                    <div className="text-center py-8 text-gray-400 text-sm">
+                      No {status} projects
+                    </div>
+                  )}
                 </div>
-                <span
-                  className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                    project.status
-                  )}`}
-                >
-                  {getStatusLabel(project.status)}
-                </span>
-              </div>
-
-              {/* Description */}
-              {project.description && (
-                <p className="text-sm text-gray-600 mb-4 line-clamp-2">{project.description}</p>
-              )}
-
-              {/* Budget Progress */}
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-600">Budget Progress</span>
-                  <span className="text-sm font-semibold text-gray-900">
-                    {formatCurrency(project.total_paid)} / {formatCurrency(project.budget)}
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-blue-600 h-2 rounded-full transition-all"
-                    style={{ width: `${calculateProgress(project.total_paid, project.budget)}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Team Members */}
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Users size={16} />
-                <span>
-                  {project.project_team_members.length} team member
-                  {project.project_team_members.length !== 1 ? 's' : ''}
-                </span>
-              </div>
-            </div>
+              </SortableContext>
+            </KanbanColumn>
           ))}
         </div>
-      )}
+
+        <DragOverlay>
+          {activeProject && (
+            <ProjectKanbanCard
+              project={activeProject as any}
+              isDragging
+              currency={profile?.currency || 'INR'}
+            />
+          )}
+        </DragOverlay>
+      </DndContext>
     </div>
   )
 }

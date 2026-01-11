@@ -5,20 +5,26 @@ export const exportToJSON = (data: any, filename: string) => {
   downloadBlob(blob, `${filename}.json`)
 }
 
-export const exportToCSV = (data: Client[], filename: string) => {
-  const headers = ['Name', 'Phone', 'Project Description', 'Budget', 'Status', 'Created']
-  const rows = data.map((client) => [
-    client.name,
-    client.phone || '',
-    client.project_description || '',
-    client.budget ? client.budget.toString() : '',
-    client.status,
-    new Date(client.created_at).toLocaleDateString(),
-  ])
+export const exportToCSV = (data: any[], filename: string) => {
+  let headers: string[] = []
+  let rows: any[][] = []
+
+  if (!data || data.length === 0) {
+    headers = []
+    rows = []
+  } else if (typeof data[0] === 'object' && !Array.isArray(data[0])) {
+    // Generic object array - infer headers from keys
+    headers = Object.keys(data[0])
+    rows = data.map((row) => headers.map((h) => row[h] ?? ''))
+  } else {
+    // Fallback: not objects - stringify values
+    headers = ['Value']
+    rows = data.map((d) => [String(d)])
+  }
 
   const csv = [
     headers.join(','),
-    ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
+    ...rows.map((row) => row.map((cell: any) => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
   ].join('\n')
 
   const blob = new Blob([csv], { type: 'text/csv' })
@@ -49,7 +55,7 @@ export const getStatusColor = (status: string): string => {
   }
 }
 
-export const getClientStatusColor = (status: string): string => {
+export const getClientStatusColor = (status?: string): string => {
   switch (status) {
     case 'new':
       return 'bg-purple-100 text-purple-800'
@@ -62,7 +68,7 @@ export const getClientStatusColor = (status: string): string => {
   }
 }
 
-export const getClientStatusLabel = (status: string): string => {
+export const getClientStatusLabel = (status?: string): string => {
   switch (status) {
     case 'new':
       return 'New'

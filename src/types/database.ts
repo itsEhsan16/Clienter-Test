@@ -17,7 +17,7 @@ export type MemberRole =
 
 export type TaskStatus = 'assigned' | 'in_progress' | 'completed' | 'cancelled'
 
-export type ProjectStatus = 'planning' | 'in_progress' | 'on_hold' | 'completed' | 'cancelled'
+export type ProjectStatus = 'new' | 'ongoing' | 'completed'
 
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
@@ -101,7 +101,7 @@ export interface TaskWithDetails extends Task {
 export interface Project {
   id: string
   client_id: string
-  organization_id: string
+  organization_id?: string | null
   name: string
   description: string | null
   status: ProjectStatus
@@ -110,6 +110,7 @@ export interface Project {
   start_date: string | null
   deadline: string | null
   completed_at: string | null
+  order: number
   created_by: string
   created_at: string
   updated_at: string
@@ -200,6 +201,26 @@ export interface ProjectSummary {
 }
 
 // =====================================================
+// PROJECT PAYMENTS
+// =====================================================
+
+export interface ProjectPayment {
+  id: string
+  project_id: string
+  amount: number
+  payment_date: string
+  payment_type: PaymentType
+  notes: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ProjectPaymentWithCreator extends ProjectPayment {
+  creator: Profile
+}
+
+// =====================================================
 // PAYMENTS (for team members)
 // =====================================================
 
@@ -229,17 +250,15 @@ export interface Client {
   organization_id: string
   name: string
   phone: string | null
-  project_description: string | null
-  budget: number | null
-  // legacy single-value field (kept for compatibility)
-  advance_paid: number | null
-  // ordered list of payments made by the client
-  payments?: { name: string; amount: number; created_at?: string }[]
-  total_amount: number | null
-  status: 'new' | 'ongoing' | 'completed'
-  order: number
   created_at: string
   updated_at: string
+  // Optional fields present in some queries
+  project_description?: string | null
+  payments?: any[]
+  total_amount?: number | null
+  advance_paid?: number | null
+  status?: string
+  budget?: number | null
 }
 
 export interface ClientWithMeetings extends Client {

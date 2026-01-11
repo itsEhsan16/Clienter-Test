@@ -6,15 +6,25 @@ import { KanbanCard } from './KanbanCard'
 interface KanbanColumnProps {
   id: string
   title: string
-  clients: Client[]
-  count: number
+  clients?: Client[]
+  count?: number
   currency?: string
+  children?: React.ReactNode
 }
 
-export function KanbanColumn({ id, title, clients, count, currency = 'USD' }: KanbanColumnProps) {
+export function KanbanColumn({
+  id,
+  title,
+  clients,
+  count,
+  currency = 'USD',
+  children,
+}: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id,
   })
+  const finalClients = clients || []
+  const finalCount = count ?? finalClients.length
 
   const isNew = id === 'new'
   const isOngoing = id === 'ongoing'
@@ -50,18 +60,26 @@ export function KanbanColumn({ id, title, clients, count, currency = 'USD' }: Ka
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className={`text-lg font-bold ${getTitleColor()}`}>{title}</h3>
-        <span className={`px-2 py-1 text-sm rounded-full ${getBadgeColor()}`}>{count}</span>
+        <span className={`px-2 py-1 text-sm rounded-full ${getBadgeColor()}`}>{finalCount}</span>
       </div>
 
-      <SortableContext items={clients.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-3">
-          {clients.map((client) => (
-            <KanbanCard key={client.id} client={client} currency={currency} />
-          ))}
-        </div>
-      </SortableContext>
+      {children ? (
+        // If children provided, render them (used for Projects board)
+        <div>{children}</div>
+      ) : (
+        <SortableContext
+          items={finalClients.map((c) => c.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-3">
+            {finalClients.map((client) => (
+              <KanbanCard key={client.id} client={client} currency={currency} />
+            ))}
+          </div>
+        </SortableContext>
+      )}
 
-      {clients.length === 0 && (
+      {finalClients.length === 0 && (
         <div className="text-center py-8 text-gray-400">No clients in {title.toLowerCase()}</div>
       )}
     </div>
