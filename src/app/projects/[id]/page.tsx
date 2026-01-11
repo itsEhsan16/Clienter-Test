@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -63,14 +63,15 @@ export default function ProjectDetailsPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    status: 'new',
+    budget: '',
+  })
 
-  useEffect(() => {
-    if (user && projectId) {
-      fetchProjectDetails()
-    }
-  }, [user, projectId])
-
-  const fetchProjectDetails = async () => {
+  const fetchProjectDetails = useCallback(async () => {
     try {
       setLoading(true)
 
@@ -118,35 +119,108 @@ export default function ProjectDetailsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [projectId])
+
+  useEffect(() => {
+    if (user && projectId) {
+      fetchProjectDetails()
+    }
+  }, [projectId, user, fetchProjectDetails])
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'planning':
-        return 'bg-gray-100 text-gray-800'
-      case 'in_progress':
+      case 'new':
+        return 'bg-purple-100 text-purple-800'
+      case 'ongoing':
         return 'bg-blue-100 text-blue-800'
-      case 'on_hold':
-        return 'bg-yellow-100 text-yellow-800'
       case 'completed':
         return 'bg-green-100 text-green-800'
-      case 'cancelled':
-        return 'bg-red-100 text-red-800'
       default:
         return 'bg-gray-100 text-gray-800'
     }
   }
 
   const getStatusLabel = (status: string) => {
-    return status
-      .split('_')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ')
+    switch (status) {
+      case 'new':
+        return 'New'
+      case 'ongoing':
+        return 'Ongoing'
+      case 'completed':
+        return 'Completed'
+      default:
+        return status.charAt(0).toUpperCase() + status.slice(1)
+    }
   }
 
-  const calculateProgress = (totalPaid: number, budget: number) => {
-    if (budget === 0) return 0
-    return Math.min((totalPaid / budget) * 100, 100)
+  const calculateProgress = (totalPaid?: number | null, budget?: number | null) => {
+    const t = totalPaid ?? 0
+    const b = budget ?? 0
+    if (b === 0) return 0
+    return Math.min((t / b) * 100, 100)
+  }
+
+  const openEditModal = () => {
+    if (!project) return
+
+    setEditForm({
+      name: project.name || '',
+      description: project.description || '',
+      status: project.status || 'new',
+      budget: project.budget ? project.budget.toString() : '',
+    })
+
+    // Open the modal after pre-filling the form
+    setShowEditModal(true)
+  }
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!project) return
+
+    try {
+      setSaving(true)
+
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editForm.name,
+          description: editForm.description || null,
+          status: editForm.status,
+          budget: editForm.budget ? parseFloat(editForm.budget) : null,
+        }),
+      })
+
+      if (!res.ok) {
+        // Try parsing JSON safely, fall back to text (server may return HTML during dev errors)
+        let errMsg = 'Failed to update project'
+        try {
+          const errorBody = await res.json()
+          errMsg =
+            errorBody?.error ||
+            (typeof errorBody === 'string' ? errorBody : JSON.stringify(errorBody))
+        } catch (e) {
+          try {
+            const text = await res.text()
+            errMsg = text || errMsg
+          } catch (e2) {
+            // leave default
+          }
+        }
+        console.error('Project update response error:', errMsg)
+        throw new Error(errMsg)
+      }
+
+      toast.success('Project updated successfully!')
+      setShowEditModal(false)
+      fetchProjectDetails() // Refresh data
+    } catch (error: any) {
+      console.error('Error updating project:', error)
+      toast.error(error.message || 'Failed to update project')
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (loading) {
@@ -196,10 +270,7 @@ export default function ProjectDetailsPage() {
               <span className="text-gray-600">Client: {project.clients.name}</span>
             </div>
           </div>
-          <button
-            onClick={() => toast('Edit functionality coming soon')}
-            className="btn-primary flex items-center gap-2"
-          >
+          <button onClick={openEditModal} className="btn-primary flex items-center gap-2">
             <Edit size={16} />
             Edit Project
           </button>
@@ -435,6 +506,107 @@ export default function ProjectDetailsPage() {
           </div>
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <form onSubmit={handleEditSubmit}>
+              {/* Modal Header */}
+              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-gray-900">Edit Project</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="px-6 py-6 space-y-5">
+                {/* Project Name */}
+                <div>
+                  <label className="label">
+                    Project Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    className="input"
+                    required
+                    placeholder="Enter project name"
+                  />
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="label">Description</label>
+                  <textarea
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                    className="input min-h-[100px] resize-y"
+                    placeholder="Enter project description"
+                    rows={4}
+                  />
+                </div>
+
+                {/* Status */}
+                <div>
+                  <label className="label">
+                    Status <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={editForm.status}
+                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                    className="input"
+                    required
+                  >
+                    <option value="new">New</option>
+                    <option value="ongoing">Ongoing</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                </div>
+
+                {/* Budget */}
+                <div>
+                  <label className="label">Budget (₹)</label>
+                  <input
+                    type="number"
+                    value={editForm.budget}
+                    onChange={(e) => setEditForm({ ...editForm, budget: e.target.value })}
+                    className="input"
+                    placeholder="Enter budget amount"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="btn-secondary"
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={saving || !editForm.name.trim()}
+                >
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

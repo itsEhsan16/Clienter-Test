@@ -161,35 +161,94 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await request.json()
-    const { name, description, status, budget, start_date, deadline, order } = body
+    // Verify organization membership
+    const { data: orgMember } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', session.user.id)
+      .single()
 
-    // Build update object
-    const updateData: any = {}
-    if (name !== undefined) updateData.name = name
-    if (description !== undefined) updateData.description = description
+    if (!orgMember) {
+      return NextResponse.json({ error: 'User not part of any organization' }, { status: 403 })
+    }
+
+    const body = await request.json()
+    const { name, description, status, budget, order } = body
+
+    // Validate required fields
+    if (!name || name.trim() === '') {
+      return NextResponse.json({ error: 'Project name is required' }, { status: 400 })
+    }
+
+    // Validate status
+    const validStatuses = ['new', 'ongoing', 'completed']
+    if (status && !validStatuses.includes(status)) {
+      return NextResponse.json({ error: 'Invalid status value' }, { status: 400 })
+    }
+
+    // Use admin client to bypass RLS
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('[Project Update API] Missing SUPABASE_SERVICE_ROLE_KEY')
+      return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
+    }
+
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: { autoRefreshToken: false, persistSession: false },
+        db: { schema: 'public' },
+      }
+    )
+
+    // Verify project exists and user has permission
+    const { data: existingProject } = await supabaseAdmin
+      .from('projects')
+      .select('id, organization_id')
+      .eq('id', params.id)
+      .single()
+
+    if (!existingProject) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    if (existingProject.organization_id !== orgMember.organization_id) {
+      return NextResponse.json({ error: 'Not authorized to update this project' }, { status: 403 })
+    }
+
+    // Build update object - only include fields that exist in database
+    const updateData: any = { updated_at: new Date().toISOString() }
+    if (name !== undefined) updateData.name = name.trim()
+    if (description !== undefined) updateData.description = description?.trim() || null
     if (status !== undefined) updateData.status = status
     if (budget !== undefined) updateData.budget = budget ? parseFloat(budget) : null
-    if (start_date !== undefined) updateData.start_date = start_date
-    if (deadline !== undefined) updateData.deadline = deadline
     if (order !== undefined) updateData.order = order
 
-    // Update project
-    const { data: project, error } = await supabase
+    // Update project using admin client
+    const { data: project, error } = await supabaseAdmin
       .from('projects')
       .update(updateData)
       .eq('id', params.id)
-      .select()
+      .select(
+        `
+        *,
+        clients (
+          id,
+          name,
+          phone
+        )
+      `
+      )
       .single()
 
     if (error) {
-      console.error('Error updating project:', error)
+      console.error('[Project Update API] Error updating project:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     return NextResponse.json({ project }, { status: 200 })
   } catch (error: any) {
-    console.error('Error in PUT /api/projects/[id]:', error)
+    console.error('[Project Update API] Error:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
