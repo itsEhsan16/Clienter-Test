@@ -11,10 +11,10 @@ import {
   Users,
   Briefcase,
   Calendar,
-  DollarSign,
   AlertCircle,
   ListTodo,
 } from 'lucide-react'
+import Rupee from '@/components/Rupee'
 import { createBrowserClient } from '@supabase/ssr'
 import toast from 'react-hot-toast'
 

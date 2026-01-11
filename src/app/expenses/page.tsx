@@ -4,17 +4,8 @@ import { useEffect, useState, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'react-hot-toast'
-import {
-  Plus,
-  DollarSign,
-  TrendingUp,
-  Users,
-  Package,
-  X,
-  Calendar,
-  FileText,
-  Eye,
-} from 'lucide-react'
+import { Plus, TrendingUp, Users, Package, X, Calendar, FileText, Eye } from 'lucide-react'
+import Rupee from '@/components/Rupee'
 import { formatCurrency } from '@/lib/utils'
 import { format } from 'date-fns'
 import { useSearchParams } from 'next/navigation'
@@ -400,7 +391,7 @@ function ExpensesPageContent() {
               <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.total)}</p>
             </div>
             <div className="p-3 bg-blue-100 rounded-lg">
-              <DollarSign className="text-blue-600" size={24} />
+              <Rupee className="text-blue-600" size={20} />
             </div>
           </div>
         </div>

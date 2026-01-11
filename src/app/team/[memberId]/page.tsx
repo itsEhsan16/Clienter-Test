@@ -9,7 +9,6 @@ import {
   Lock,
   User as UserIcon,
   Calendar,
-  DollarSign,
   FileText,
   Copy,
   CheckCircle,
@@ -17,6 +16,7 @@ import {
   Clock,
   Briefcase,
 } from 'lucide-react'
+import Rupee from '@/components/Rupee'
 import { getRoleBadgeColor, getRoleLabel } from '@/lib/rbac-helpers'
 import toast from 'react-hot-toast'
 
@@ -212,7 +212,7 @@ export default function TeamMemberDetailPage() {
             {member.monthly_salary && (
               <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                  <DollarSign className="w-5 h-5 mr-2" />
+                  <Rupee className="w-5 h-5 mr-2" size={14} />
                   Monthly Salary
                 </h3>
                 <p className="text-2xl font-bold text-gray-900">

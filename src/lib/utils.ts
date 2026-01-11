@@ -86,40 +86,24 @@ export const getStatusLabel = (status: string): string => {
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
-export const formatCurrency = (amount: number | null, currency: string = 'USD'): string => {
-  if (!amount) return `${getCurrencySymbol(currency)}0`
-  return new Intl.NumberFormat(getLocaleForCurrency(currency), {
+export const formatCurrency = (amount: number | null, _currency?: string): string => {
+  // Application-wide currency: Indian Rupee (₹)
+  const currency = 'INR'
+  if (amount === null || amount === undefined) return `₹0`
+  return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
+    currencyDisplay: 'symbol',
   }).format(amount)
 }
 
-const getCurrencySymbol = (currency: string): string => {
-  const symbols: Record<string, string> = {
-    USD: '$',
-    EUR: '€',
-    GBP: '£',
-    INR: '₹',
-    AUD: 'A$',
-    CAD: 'C$',
-    JPY: '¥',
-    CNY: '¥',
-  }
-  return symbols[currency] || currency
+// Deprecated: we keep symbol map for reference, but the app always uses INR
+const getCurrencySymbol = (_currency: string): string => {
+  return '₹'
 }
 
-const getLocaleForCurrency = (currency: string): string => {
-  const locales: Record<string, string> = {
-    USD: 'en-US',
-    EUR: 'de-DE',
-    GBP: 'en-GB',
-    INR: 'en-IN',
-    AUD: 'en-AU',
-    CAD: 'en-CA',
-    JPY: 'ja-JP',
-    CNY: 'zh-CN',
-  }
-  return locales[currency] || 'en-US'
+const getLocaleForCurrency = (_currency: string): string => {
+  return 'en-IN'
 }

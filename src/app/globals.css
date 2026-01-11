@@ -30,11 +30,11 @@
   }
 
   .card {
-    @apply bg-white overflow-hidden shadow-sm rounded-xl border border-gray-200 hover:shadow-md transition-shadow duration-200;
+    @apply bg-white p-6 overflow-hidden shadow-sm rounded-xl border border-gray-200 hover:shadow-md transition-shadow duration-200;
   }
 
   .stat-card {
-    @apply bg-white p-6 rounded-xl border border-gray-200 hover:border-orange-200 transition-all duration-200;
+    @apply bg-white p-4 rounded-xl border border-gray-200 hover:border-orange-200 transition-all duration-200;
   }
 
   .badge {

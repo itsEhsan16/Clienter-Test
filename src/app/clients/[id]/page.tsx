@@ -12,7 +12,8 @@ import {
   getClientStatusLabel,
 } from '@/lib/utils'
 import { formatRelativeTime, formatTimeAgo } from '@/lib/date-utils'
-import { ArrowLeft, Edit, Trash2, Plus, Phone, Calendar, DollarSign } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Plus, Phone, Calendar } from 'lucide-react'
+import Rupee from '@/components/Rupee'
 import Link from 'next/link'
 
 function formatPhoneForWhatsApp(phone?: string | null) {

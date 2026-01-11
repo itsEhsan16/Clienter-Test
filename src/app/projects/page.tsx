@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
-import { Plus, FolderKanban, DollarSign, TrendingUp, Search, Download } from 'lucide-react'
+import { Plus, FolderKanban, TrendingUp, Search, Download } from 'lucide-react'
+import Rupee from '@/components/Rupee'
 import { formatCurrency, exportToCSV, exportToJSON } from '@/lib/utils'
 import {
   DndContext,
@@ -310,7 +311,7 @@ export default function ProjectsPage() {
               </p>
             </div>
             <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-purple-100">
-              <DollarSign className="text-purple-600" size={20} />
+              <Rupee className="text-purple-600" size={16} />
             </div>
           </div>
         </div>
@@ -324,7 +325,7 @@ export default function ProjectsPage() {
               </p>
             </div>
             <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-green-100">
-              <DollarSign className="text-green-600" size={20} />
+              <Rupee className="text-green-600" size={16} />
             </div>
           </div>
         </div>

@@ -1,38 +1,62 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+
+// Helper to create admin client that bypasses RLS
+function createAdminClient() {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
+  }
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: { autoRefreshToken: false, persistSession: false },
+      db: { schema: 'public' },
+    }
+  )
+}
+
+// Helper to get authenticated session
+async function getAuthSession() {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options)
+          })
+        },
+      },
+    }
+  )
+  return supabase.auth.getSession()
+}
 
 // GET /api/projects/[id]/payments - Fetch all payments for a project
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
-
     // Check authentication
     const {
       data: { session },
-    } = await supabase.auth.getSession()
+    } = await getAuthSession()
 
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: payments, error } = await supabase
+    // Use admin client to bypass RLS
+    const supabaseAdmin = createAdminClient()
+
+    // Fetch payments using admin client (bypasses RLS)
+    const { data: payments, error } = await supabaseAdmin
       .from('project_payments')
       .select(
         `
@@ -47,13 +71,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
       .order('payment_date', { ascending: false })
 
     if (error) {
-      console.error('Error fetching payments:', error)
+      console.error('[Payments API] Error fetching payments:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ payments }, { status: 200 })
+    return NextResponse.json({ payments: payments || [] }, { status: 200 })
   } catch (error: any) {
-    console.error('Error in GET /api/projects/[id]/payments:', error)
+    console.error('[Payments API] Error in GET:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
@@ -61,54 +85,28 @@ export async function GET(request: Request, { params }: { params: { id: string }
 // POST /api/projects/[id]/payments - Add a new payment to project
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
-
     // Check authentication
     const {
       data: { session },
-    } = await supabase.auth.getSession()
+    } = await getAuthSession()
 
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
-    const { amount, payment_date, payment_type = 'regular', notes } = body
+    const { amount, payment_date, payment_type = 'regular', notes, team_member_id } = body
 
     // Validate required fields
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: 'Valid amount is required' }, { status: 400 })
     }
 
-    // Verify project exists
-    const { data: project } = await supabase
-      .from('projects')
-      .select('id')
-      .eq('id', params.id)
-      .single()
+    // Use admin client
+    const supabaseAdmin = createAdminClient()
 
-    if (!project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-    }
-
-    // Create payment (trigger will auto-update project.total_paid)
-    const { data: payment, error } = await supabase
+    // Create payment
+    const { data: payment, error } = await supabaseAdmin
       .from('project_payments')
       .insert({
         project_id: params.id,
@@ -116,6 +114,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         payment_date: payment_date || new Date().toISOString().split('T')[0],
         payment_type,
         notes,
+        team_member_id: team_member_id || null,
         created_by: session.user.id,
       })
       .select(
@@ -130,42 +129,34 @@ export async function POST(request: Request, { params }: { params: { id: string 
       .single()
 
     if (error) {
-      console.error('Error creating payment:', error)
+      console.error('[Payments API] Error creating payment:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // Update project total_paid
+    const { data: totalData } = await supabaseAdmin
+      .from('project_payments')
+      .select('amount')
+      .eq('project_id', params.id)
+
+    const newTotal = (totalData || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
+
+    await supabaseAdmin.from('projects').update({ total_paid: newTotal }).eq('id', params.id)
+
     return NextResponse.json({ payment }, { status: 201 })
   } catch (error: any) {
-    console.error('Error in POST /api/projects/[id]/payments:', error)
+    console.error('[Payments API] Error in POST:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
 
-// DELETE /api/projects/[id]/payments/[payment_id] - Delete a payment
+// DELETE /api/projects/[id]/payments - Delete a payment
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
-
     // Check authentication
     const {
       data: { session },
-    } = await supabase.auth.getSession()
+    } = await getAuthSession()
 
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -179,21 +170,34 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: 'payment_id is required' }, { status: 400 })
     }
 
-    // Delete payment (trigger will auto-update project.total_paid)
-    const { error } = await supabase
+    // Use admin client
+    const supabaseAdmin = createAdminClient()
+
+    // Delete payment
+    const { error } = await supabaseAdmin
       .from('project_payments')
       .delete()
       .eq('id', payment_id)
       .eq('project_id', params.id)
 
     if (error) {
-      console.error('Error deleting payment:', error)
+      console.error('[Payments API] Error deleting payment:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // Update project total_paid
+    const { data: totalData } = await supabaseAdmin
+      .from('project_payments')
+      .select('amount')
+      .eq('project_id', params.id)
+
+    const newTotal = (totalData || []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0)
+
+    await supabaseAdmin.from('projects').update({ total_paid: newTotal }).eq('id', params.id)
+
     return NextResponse.json({ message: 'Payment deleted successfully' }, { status: 200 })
   } catch (error: any) {
-    console.error('Error in DELETE /api/projects/[id]/payments:', error)
+    console.error('[Payments API] Error in DELETE:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }

@@ -5,8 +5,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'react-hot-toast'
-import { ArrowLeft, Edit, Users, DollarSign, Calendar, TrendingUp, Plus, X } from 'lucide-react'
+import { ArrowLeft, Edit, Users, Calendar, TrendingUp, Plus, X } from 'lucide-react'
+import Rupee from '@/components/Rupee'
 import { formatCurrency } from '@/lib/utils'
+
 import { format } from 'date-fns'
 
 interface Project {
@@ -21,17 +23,18 @@ interface Project {
   deadline: string | null
   created_at: string
   clients: {
+    id: string
     name: string
-    company_name: string | null
-    email: string
+    phone: string | null
   }
 }
 
 interface TeamMember {
   id: string
   team_member_id: string
-  allocated_budget: number
-  total_paid: number
+  allocated_budget?: number | null
+  total_paid?: number | null
+  role?: string | null
   profiles: {
     full_name: string
     email: string
@@ -71,54 +74,34 @@ export default function ProjectDetailsPage() {
     try {
       setLoading(true)
 
-      // Fetch project
-      const { data: projectData, error: projectError } = await supabase
-        .from('projects')
-        .select(
-          `
-          *,
-          clients (name, company_name, email)
-        `
-        )
-        .eq('id', projectId)
-        .single()
-
-      if (projectError) throw projectError
+      // Fetch project via server API (avoids RLS recursion)
+      const res = await fetch(`/api/projects/${projectId}`)
+      if (!res.ok) {
+        let errMsg = 'Failed to fetch project'
+        try {
+          const body = await res.json()
+          errMsg = body?.error || errMsg
+        } catch (e) {}
+        throw new Error(errMsg)
+      }
+      const { project: projectData } = await res.json()
       setProject(projectData)
 
-      // Fetch team members
-      const { data: teamData, error: teamError } = await supabase
-        .from('project_team_members')
-        .select(
-          `
-          *,
-          profiles (full_name, email)
-        `
-        )
-        .eq('project_id', projectId)
+      // Team members are included in the project response (project_team_members)
+      setTeamMembers(projectData.project_team_members || [])
 
-      if (teamError) throw teamError
-      setTeamMembers(teamData || [])
+      // Fetch payments via server API
+      const paymentsRes = await fetch(`/api/projects/${projectId}/payments`)
+      if (!paymentsRes.ok) {
+        let errMsg = 'Failed to fetch payments'
+        try {
+          const body = await paymentsRes.json()
+          errMsg = body?.error || errMsg
+        } catch (e) {}
+        throw new Error(errMsg)
+      }
+      const { payments: paymentsData } = await paymentsRes.json()
 
-      // Fetch payments via expenses
-      const { data: paymentsData, error: paymentsError } = await supabase
-        .from('team_payment_records')
-        .select(
-          `
-          id,
-          amount,
-          payment_date,
-          payment_type,
-          notes,
-          expenses!inner (project_id),
-          profiles (full_name)
-        `
-        )
-        .eq('expenses.project_id', projectId)
-        .order('payment_date', { ascending: false })
-        .limit(10)
-
-      if (paymentsError) throw paymentsError
       setPayments(
         (paymentsData || []).map((p: any) => ({
           id: p.id,
@@ -126,9 +109,7 @@ export default function ProjectDetailsPage() {
           payment_date: p.payment_date,
           payment_type: p.payment_type,
           notes: p.notes,
-          profiles: p.profiles
-            ? p.profiles[0] || { full_name: 'Unknown' }
-            : { full_name: 'Unknown' },
+          profiles: p.creator || { full_name: 'Unknown' },
         }))
       )
     } catch (error: any) {
@@ -212,9 +193,7 @@ export default function ProjectDetailsPage() {
               >
                 {getStatusLabel(project.status)}
               </span>
-              <span className="text-gray-600">
-                Client: {project.clients.company_name || project.clients.name}
-              </span>
+              <span className="text-gray-600">Client: {project.clients.name}</span>
             </div>
           </div>
           <button
@@ -236,7 +215,7 @@ export default function ProjectDetailsPage() {
               <p className="text-2xl font-bold text-gray-900">{formatCurrency(project.budget)}</p>
             </div>
             <div className="p-3 bg-purple-100 rounded-lg">
-              <DollarSign className="text-purple-600" size={24} />
+              <Rupee className="text-purple-600" size={22} />
             </div>
           </div>
         </div>
@@ -250,7 +229,7 @@ export default function ProjectDetailsPage() {
               </p>
             </div>
             <div className="p-3 bg-green-100 rounded-lg">
-              <DollarSign className="text-green-600" size={24} />
+              <Rupee className="text-green-600" size={22} />
             </div>
           </div>
         </div>
@@ -361,14 +340,18 @@ export default function ProjectDetailsPage() {
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-gray-600">Allocated Budget:</span>
                       <span className="font-semibold text-gray-900">
-                        {formatCurrency(member.allocated_budget)}
+                        {member.allocated_budget !== null && member.allocated_budget !== undefined
+                          ? formatCurrency(member.allocated_budget)
+                          : 'Not set'}
                       </span>
                     </div>
 
                     <div className="flex justify-between items-center text-sm mt-1">
                       <span className="text-gray-600">Total Paid:</span>
                       <span className="font-semibold text-green-600">
-                        {formatCurrency(member.total_paid)}
+                        {member.total_paid !== null && member.total_paid !== undefined
+                          ? formatCurrency(member.total_paid)
+                          : 'N/A'}
                       </span>
                     </div>
 
@@ -403,16 +386,12 @@ export default function ProjectDetailsPage() {
                 <p className="text-sm text-gray-600 mb-1">Name</p>
                 <p className="text-gray-900">{project.clients.name}</p>
               </div>
-              {project.clients.company_name && (
+              {project.clients.phone && (
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Company</p>
-                  <p className="text-gray-900">{project.clients.company_name}</p>
+                  <p className="text-sm text-gray-600 mb-1">Phone</p>
+                  <p className="text-gray-900">{project.clients.phone}</p>
                 </div>
               )}
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Email</p>
-                <p className="text-gray-900">{project.clients.email}</p>
-              </div>
             </div>
           </div>
 

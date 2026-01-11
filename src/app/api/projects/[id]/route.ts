@@ -49,14 +49,27 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
     }
 
+    console.log('[Project Details API] Creating admin client for project:', params.id)
+    console.log(
+      '[Project Details API] Service role key present:',
+      !!process.env.SUPABASE_SERVICE_ROLE_KEY
+    )
+
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       {
-        auth: { autoRefreshToken: false, persistSession: false },
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+        db: {
+          schema: 'public',
+        },
       }
     )
 
+    // Fetch project - service role bypasses RLS
     const { data: project, error } = await supabaseAdmin
       .from('projects')
       .select(
@@ -66,18 +79,6 @@ export async function GET(request: Request, { params }: { params: { id: string }
           id,
           name,
           phone
-        ),
-        project_team_members (
-          id,
-          team_member_id,
-          role,
-          allocated_budget,
-          total_paid,
-          status,
-          profiles (
-            full_name,
-            email
-          )
         )
       `
       )
@@ -85,12 +86,34 @@ export async function GET(request: Request, { params }: { params: { id: string }
       .single()
 
     if (error) {
-      console.error('Error fetching project (admin):', error)
+      console.error('[Project Details API] Error fetching project:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    // Fetch team members separately to avoid RLS issues
+    const { data: teamMembers, error: teamError } = await supabaseAdmin
+      .from('project_team_members')
+      .select(
+        `
+        *,
+        profiles (
+          full_name,
+          email
+        )
+      `
+      )
+      .eq('project_id', params.id)
+
+    if (teamError) {
+      console.error('[Project Details API] Error fetching team members:', teamError)
+      // Don't fail the whole request, just set empty array
+      project.project_team_members = []
+    } else {
+      project.project_team_members = teamMembers || []
     }
 
     // Authorization: ensure project belongs to user's org OR user is assigned to it
