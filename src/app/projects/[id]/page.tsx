@@ -527,11 +527,7 @@ export default function ProjectDetailsPage() {
       </div>
 
       {/* Stats Grid */}
-      <div
-        className={`grid grid-cols-1 ${
-          project.deadline ? 'md:grid-cols-5' : 'md:grid-cols-4'
-        } gap-4 mb-6`}
-      >
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
@@ -581,56 +577,6 @@ export default function ProjectDetailsPage() {
             <div className="p-3 bg-orange-100 rounded-lg">
               <Users className="text-orange-600" size={24} />
             </div>
-          </div>
-        </div>
-
-        <div className="card relative overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-amber-50 via-white to-rose-50" />
-          <div className="relative">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-gray-600 mb-1">Deadline</p>
-                {project.deadline ? (
-                  <p className="text-xl font-bold text-gray-900">
-                    {format(new Date(project.deadline), 'MMM dd, yyyy')}
-                  </p>
-                ) : (
-                  <p className="text-lg font-semibold text-gray-700">Not set</p>
-                )}
-              </div>
-              {project.deadline && deadlineMetrics ? (
-                <span
-                  className={`text-xs px-2 py-1 rounded-full font-semibold ${deadlineMetrics.badgeClass}`}
-                >
-                  {deadlineMetrics.badgeText}
-                </span>
-              ) : (
-                <button
-                  onClick={openEditModal}
-                  className="text-xs font-semibold text-orange-600 hover:text-orange-700"
-                >
-                  Add deadline
-                </button>
-              )}
-            </div>
-
-            {project.deadline && deadlineMetrics ? (
-              <div className="mt-4">
-                <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden shadow-inner">
-                  <div
-                    className="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500"
-                    style={{ width: `${deadlineMetrics.progress}%` }}
-                  />
-                </div>
-                <div className="flex justify-between items-center text-xs text-gray-600 mt-2">
-                  <span>{deadlineMetrics.daysLeftLabel}</span>
-                  <span>{deadlineMetrics.progress.toFixed(0)}% of time elapsed</span>
-                </div>
-                <p className="mt-2 text-xs text-gray-700 font-medium">{deadlineMetrics.paceHint}</p>
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-gray-600">Set a deadline to track urgency.</p>
-            )}
           </div>
         </div>
       </div>
@@ -770,11 +716,8 @@ export default function ProjectDetailsPage() {
               </div>
             )}
           </div>
-        </div>
 
-        {/* Right Column */}
-        <div className="space-y-6">
-          {/* Client Info */}
+          {/* Client Info - Moved to Bottom */}
           <div className="card">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Client Details</h2>
             <div className="space-y-3">
@@ -790,6 +733,64 @@ export default function ProjectDetailsPage() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Right Column */}
+        <div className="space-y-6">
+
+           {/* Deadline - Moved from Stats Grid */}
+          <div className="card relative overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-amber-50 via-white to-rose-50" />
+            <div className="relative">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">Deadline</p>
+                  {project.deadline ? (
+                    <p className="text-xl font-bold text-gray-900">
+                      {format(new Date(project.deadline), 'MMM dd, yyyy')}
+                    </p>
+                  ) : (
+                    <p className="text-lg font-semibold text-gray-700">Not set</p>
+                  )}
+                </div>
+                {project.deadline && deadlineMetrics ? (
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full font-semibold ${deadlineMetrics.badgeClass}`}
+                  >
+                    {deadlineMetrics.badgeText}
+                  </span>
+                ) : (
+                  <button
+                    onClick={openEditModal}
+                    className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+                  >
+                    Add deadline
+                  </button>
+                )}
+              </div>
+
+              {project.deadline && deadlineMetrics ? (
+                <div className="mt-4">
+                  <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden shadow-inner">
+                    <div
+                      className="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500"
+                      style={{ width: `${deadlineMetrics.progress}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-gray-600 mt-2">
+                    <span>{deadlineMetrics.daysLeftLabel}</span>
+                    <span>{deadlineMetrics.progress.toFixed(0)}% of time elapsed</span>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-700 font-medium">
+                    {deadlineMetrics.paceHint}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-gray-600">Set a deadline to track urgency.</p>
+              )}
+            </div>
+          </div>
+
 
           {/* Recent Payments */}
           <div className="card">
@@ -815,6 +816,8 @@ export default function ProjectDetailsPage() {
               </div>
             )}
           </div>
+
+         
 
           {/* Quick Actions */}
           <div className="card">
