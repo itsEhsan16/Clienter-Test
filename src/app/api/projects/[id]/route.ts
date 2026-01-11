@@ -173,7 +173,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     const body = await request.json()
-    const { name, description, status, budget, order } = body
+    const { name, description, status, budget, order, deadline } = body
 
     // Validate name only when it is being updated
     if (name !== undefined && name.trim() === '') {
@@ -184,6 +184,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const validStatuses = ['new', 'ongoing', 'completed']
     if (status && !validStatuses.includes(status)) {
       return NextResponse.json({ error: 'Invalid status value' }, { status: 400 })
+    }
+
+    if (deadline !== undefined && deadline !== null && Number.isNaN(Date.parse(deadline))) {
+      return NextResponse.json({ error: 'Invalid deadline value' }, { status: 400 })
     }
 
     // Use admin client to bypass RLS
@@ -223,6 +227,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     if (status !== undefined) updateData.status = status
     if (budget !== undefined) updateData.budget = budget ? parseFloat(budget) : null
     if (order !== undefined) updateData.order = order
+    if (deadline !== undefined) updateData.deadline = deadline || null
 
     // Update project using admin client
     const { data: project, error } = await supabaseAdmin

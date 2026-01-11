@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -69,6 +69,7 @@ export default function ProjectDetailsPage() {
     description: '',
     status: 'new',
     budget: '',
+    deadline: '',
   })
   const [showAddMemberModal, setShowAddMemberModal] = useState(false)
   const [availableMembers, setAvailableMembers] = useState<any[]>([])
@@ -179,6 +180,73 @@ export default function ProjectDetailsPage() {
     return Math.min((t / b) * 100, 100)
   }
 
+  const MS_IN_DAY = 1000 * 60 * 60 * 24
+
+  const deadlineMetrics = useMemo(() => {
+    if (!project?.deadline) return null
+
+    const start = project.start_date ? new Date(project.start_date) : new Date(project.created_at)
+    const deadline = new Date(project.deadline)
+    const now = new Date()
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(deadline.getTime())) return null
+
+    const totalMs = deadline.getTime() - start.getTime()
+    const elapsedMs = now.getTime() - start.getTime()
+    const remainingMs = deadline.getTime() - now.getTime()
+
+    const totalDays = Math.max(1, Math.ceil(totalMs / MS_IN_DAY))
+    const elapsedDays = Math.max(0, Math.min(totalDays, Math.ceil(elapsedMs / MS_IN_DAY)))
+    const daysLeft = remainingMs > 0 ? Math.ceil(remainingMs / MS_IN_DAY) : 0
+    const overdueBy = remainingMs < 0 ? Math.abs(Math.ceil(remainingMs / MS_IN_DAY)) : 0
+
+    const progress = totalMs <= 0 ? 100 : Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100))
+
+    let badgeText = 'On Track'
+    let badgeClass = 'bg-emerald-100 text-emerald-700'
+
+    if (remainingMs < 0) {
+      badgeText = 'Overdue'
+      badgeClass = 'bg-red-100 text-red-700'
+    } else if (daysLeft <= 3) {
+      badgeText = 'Critical'
+      badgeClass = 'bg-orange-100 text-orange-700'
+    } else if (daysLeft <= 7) {
+      badgeText = 'Tight'
+      badgeClass = 'bg-amber-100 text-amber-700'
+    }
+
+    const paceHint =
+      remainingMs < 0
+        ? 'Deadline passed—ship essentials now.'
+        : daysLeft <= 3
+        ? 'Sprint mode: clear blockers daily.'
+        : daysLeft <= 7
+        ? 'Tight timeline: prioritize high-impact tasks.'
+        : 'Steady window: keep momentum without scope creep.'
+
+    const daysLeftLabel =
+      remainingMs < 0
+        ? `Overdue by ${overdueBy} day${overdueBy === 1 ? '' : 's'}`
+        : daysLeft === 0
+        ? 'Due today'
+        : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`
+
+    return {
+      start,
+      deadline,
+      progress,
+      totalDays,
+      elapsedDays,
+      daysLeft,
+      overdueBy,
+      badgeText,
+      badgeClass,
+      paceHint,
+      daysLeftLabel,
+    }
+  }, [MS_IN_DAY, project])
+
   const openEditModal = () => {
     if (!project) return
 
@@ -187,6 +255,7 @@ export default function ProjectDetailsPage() {
       description: project.description || '',
       status: project.status || 'new',
       budget: project.budget ? project.budget.toString() : '',
+      deadline: project.deadline ? format(new Date(project.deadline), 'yyyy-MM-dd') : '',
     })
 
     // Open the modal after pre-filling the form
@@ -368,6 +437,7 @@ export default function ProjectDetailsPage() {
           description: editForm.description || null,
           status: editForm.status,
           budget: editForm.budget ? parseFloat(editForm.budget) : null,
+          deadline: editForm.deadline || null,
         }),
       })
 
@@ -457,7 +527,11 @@ export default function ProjectDetailsPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div
+        className={`grid grid-cols-1 ${
+          project.deadline ? 'md:grid-cols-5' : 'md:grid-cols-4'
+        } gap-4 mb-6`}
+      >
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
@@ -507,6 +581,56 @@ export default function ProjectDetailsPage() {
             <div className="p-3 bg-orange-100 rounded-lg">
               <Users className="text-orange-600" size={24} />
             </div>
+          </div>
+        </div>
+
+        <div className="card relative overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-amber-50 via-white to-rose-50" />
+          <div className="relative">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Deadline</p>
+                {project.deadline ? (
+                  <p className="text-xl font-bold text-gray-900">
+                    {format(new Date(project.deadline), 'MMM dd, yyyy')}
+                  </p>
+                ) : (
+                  <p className="text-lg font-semibold text-gray-700">Not set</p>
+                )}
+              </div>
+              {project.deadline && deadlineMetrics ? (
+                <span
+                  className={`text-xs px-2 py-1 rounded-full font-semibold ${deadlineMetrics.badgeClass}`}
+                >
+                  {deadlineMetrics.badgeText}
+                </span>
+              ) : (
+                <button
+                  onClick={openEditModal}
+                  className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+                >
+                  Add deadline
+                </button>
+              )}
+            </div>
+
+            {project.deadline && deadlineMetrics ? (
+              <div className="mt-4">
+                <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden shadow-inner">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500"
+                    style={{ width: `${deadlineMetrics.progress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-xs text-gray-600 mt-2">
+                  <span>{deadlineMetrics.daysLeftLabel}</span>
+                  <span>{deadlineMetrics.progress.toFixed(0)}% of time elapsed</span>
+                </div>
+                <p className="mt-2 text-xs text-gray-700 font-medium">{deadlineMetrics.paceHint}</p>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-gray-600">Set a deadline to track urgency.</p>
+            )}
           </div>
         </div>
       </div>
@@ -769,6 +893,20 @@ export default function ProjectDetailsPage() {
                     <option value="ongoing">Ongoing</option>
                     <option value="completed">Completed</option>
                   </select>
+                </div>
+
+                {/* Deadline */}
+                <div>
+                  <label className="label">Deadline</label>
+                  <input
+                    type="date"
+                    value={editForm.deadline}
+                    onChange={(e) => setEditForm({ ...editForm, deadline: e.target.value })}
+                    className="input"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Set or adjust when this project should finish.
+                  </p>
                 </div>
 
                 {/* Budget */}
