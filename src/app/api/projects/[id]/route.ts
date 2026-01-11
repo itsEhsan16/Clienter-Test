@@ -175,9 +175,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const body = await request.json()
     const { name, description, status, budget, order } = body
 
-    // Validate required fields
-    if (!name || name.trim() === '') {
-      return NextResponse.json({ error: 'Project name is required' }, { status: 400 })
+    // Validate name only when it is being updated
+    if (name !== undefined && name.trim() === '') {
+      return NextResponse.json({ error: 'Project name cannot be empty' }, { status: 400 })
     }
 
     // Validate status

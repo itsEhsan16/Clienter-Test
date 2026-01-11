@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-hot-toast'
@@ -57,6 +57,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [activeId, setActiveId] = useState<string | null>(null)
+  const dragStartStatus = useRef<ProjectStatus | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -91,6 +92,8 @@ export default function ProjectsPage() {
   }
 
   const handleDragStart = (event: DragStartEvent) => {
+    const activeProject = projects.find((p) => p.id === (event.active.id as string))
+    dragStartStatus.current = activeProject?.status ?? null
     setActiveId(event.active.id as string)
   }
 
@@ -128,6 +131,9 @@ export default function ProjectsPage() {
 
     const activeId = active.id as string
     const overId = over.id as string
+
+    const originalStatus = dragStartStatus.current
+    dragStartStatus.current = null
 
     const activeProject = projects.find((p) => p.id === activeId)
     const overProject = projects.find((p) => p.id === overId)
@@ -178,6 +184,10 @@ export default function ProjectsPage() {
 
     // Update status if changed
     if (newStatus !== activeProject.status) {
+      setProjects((prev) => prev.map((p) => (p.id === activeId ? { ...p, status: newStatus } : p)))
+    }
+
+    if (newStatus !== (originalStatus ?? activeProject.status)) {
       try {
         const response = await fetch(`/api/projects/${activeId}`, {
           method: 'PUT',
