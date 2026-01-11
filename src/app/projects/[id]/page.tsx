@@ -70,6 +70,25 @@ export default function ProjectDetailsPage() {
     status: 'new',
     budget: '',
   })
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false)
+  const [availableMembers, setAvailableMembers] = useState<any[]>([])
+  const [loadingMembers, setLoadingMembers] = useState(false)
+  const [selectedMember, setSelectedMember] = useState('')
+  const [memberRole, setMemberRole] = useState('')
+  const [memberBudget, setMemberBudget] = useState('')
+  const [addingMember, setAddingMember] = useState(false)
+
+  // Edit member state
+  const [showEditMemberModal, setShowEditMemberModal] = useState(false)
+  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null)
+  const [editingMemberRole, setEditingMemberRole] = useState('')
+  const [editingMemberBudget, setEditingMemberBudget] = useState('')
+  const [editingMemberSaving, setEditingMemberSaving] = useState(false)
+
+  // Delete confirmation modal
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteAssignmentId, setDeleteAssignmentId] = useState<string | null>(null)
+  const [deleteMemberName, setDeleteMemberName] = useState('')
 
   const fetchProjectDetails = useCallback(async () => {
     try {
@@ -172,6 +191,166 @@ export default function ProjectDetailsPage() {
 
     // Open the modal after pre-filling the form
     setShowEditModal(true)
+  }
+
+  const fetchAvailableMembers = async () => {
+    try {
+      setLoadingMembers(true)
+      const res = await fetch('/api/team/list')
+      if (!res.ok) throw new Error('Failed to fetch team members')
+      const { teamMembers } = await res.json()
+      setAvailableMembers(teamMembers || [])
+    } catch (error: any) {
+      console.error('Error fetching team members:', error)
+      toast.error('Failed to load team members')
+    } finally {
+      setLoadingMembers(false)
+    }
+  }
+
+  const openAddMemberModal = () => {
+    fetchAvailableMembers()
+    setShowAddMemberModal(true)
+    setSelectedMember('')
+    setMemberRole('')
+    setMemberBudget('')
+  }
+
+  const handleAddTeamMember = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedMember) {
+      toast.error('Please select a team member')
+      return
+    }
+
+    try {
+      setAddingMember(true)
+      const res = await fetch(`/api/projects/${projectId}/team`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_member_id: selectedMember,
+          role: memberRole || null,
+          allocated_budget: memberBudget ? parseFloat(memberBudget) : null,
+        }),
+      })
+
+      if (!res.ok) {
+        let errMsg = 'Failed to add team member'
+        try {
+          const errBody = await res.json()
+          errMsg =
+            errBody?.error || (typeof errBody === 'string' ? errBody : JSON.stringify(errBody))
+        } catch (e) {
+          try {
+            const text = await res.text()
+            errMsg = text || errMsg
+          } catch (e2) {
+            // ignore
+          }
+        }
+        console.error('Project add-team response error:', errMsg)
+        throw new Error(errMsg)
+      }
+
+      toast.success('Team member added successfully!')
+      setShowAddMemberModal(false)
+      fetchProjectDetails() // Refresh data
+    } catch (error: any) {
+      console.error('Error adding team member:', error)
+      toast.error(error.message || 'Failed to add team member')
+    } finally {
+      setAddingMember(false)
+    }
+  }
+
+  const confirmRemoveTeamMember = (assignmentId: string, memberName: string) => {
+    setDeleteAssignmentId(assignmentId)
+    setDeleteMemberName(memberName)
+    setShowDeleteConfirm(true)
+  }
+
+  const handleRemoveTeamMemberConfirmed = async () => {
+    if (!deleteAssignmentId) return
+    try {
+      const res = await fetch(
+        `/api/projects/${projectId}/team?assignmentId=${deleteAssignmentId}`,
+        {
+          method: 'DELETE',
+        }
+      )
+
+      if (!res.ok) {
+        let errMsg = 'Failed to remove team member'
+        try {
+          const errBody = await res.json()
+          errMsg = errBody?.error || errMsg
+        } catch (e) {
+          try {
+            const text = await res.text()
+            errMsg = text || errMsg
+          } catch (e2) {}
+        }
+        throw new Error(errMsg)
+      }
+
+      toast.success('Team member removed successfully!')
+      setShowDeleteConfirm(false)
+      fetchProjectDetails() // Refresh data
+    } catch (error: any) {
+      console.error('Error removing team member:', error)
+      toast.error(error.message || 'Failed to remove team member')
+    }
+  }
+
+  const openEditMemberModal = (assignment: any) => {
+    setEditingAssignmentId(assignment.id)
+    setEditingMemberRole(assignment.role || '')
+    setEditingMemberBudget(
+      assignment.allocated_budget ? assignment.allocated_budget.toString() : ''
+    )
+    setShowEditMemberModal(true)
+  }
+
+  const handleEditTeamMember = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingAssignmentId) return
+
+    try {
+      setEditingMemberSaving(true)
+      const res = await fetch(`/api/projects/${projectId}/team`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignmentId: editingAssignmentId,
+          role: editingMemberRole || null,
+          allocated_budget: editingMemberBudget ? parseFloat(editingMemberBudget) : null,
+        }),
+      })
+
+      if (!res.ok) {
+        let errMsg = 'Failed to update team member'
+        try {
+          const errBody = await res.json()
+          errMsg = errBody?.error || errMsg
+        } catch (e) {
+          try {
+            const text = await res.text()
+            errMsg = text || errMsg
+          } catch (e2) {}
+        }
+        throw new Error(errMsg)
+      }
+
+      toast.success('Team member updated!')
+      setShowEditMemberModal(false)
+      fetchProjectDetails()
+    } catch (error: any) {
+      console.error('Error updating team member:', error)
+      toast.error(error.message || 'Failed to update team member')
+    } finally {
+      setEditingMemberSaving(false)
+    }
   }
 
   const handleEditSubmit = async (e: React.FormEvent) => {
@@ -388,10 +567,11 @@ export default function ProjectDetailsPage() {
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold text-gray-900">Team Members</h2>
               <button
-                onClick={() => toast('Add team member functionality coming soon')}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                onClick={openAddMemberModal}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1"
               >
-                + Add Member
+                <Plus size={16} />
+                Add Member
               </button>
             </div>
 
@@ -405,6 +585,27 @@ export default function ProjectDetailsPage() {
                       <div>
                         <p className="font-medium text-gray-900">{member.profiles.full_name}</p>
                         <p className="text-sm text-gray-600">{member.profiles.email}</p>
+                        {member.role && (
+                          <p className="text-xs text-purple-600 mt-1">Role: {member.role}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openEditMemberModal(member)}
+                          className="text-blue-600 hover:text-blue-700 p-1"
+                          title="Edit team member"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button
+                          onClick={() =>
+                            confirmRemoveTeamMember(member.id, member.profiles.full_name)
+                          }
+                          className="text-red-600 hover:text-red-700 p-1"
+                          title="Remove team member"
+                        >
+                          <X size={16} />
+                        </button>
                       </div>
                     </div>
 
@@ -604,6 +805,192 @@ export default function ProjectDetailsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Team Member Modal */}
+      {showAddMemberModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+            <form onSubmit={handleAddTeamMember}>
+              {/* Modal Header */}
+              <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-xl">
+                <h2 className="text-xl font-bold text-gray-900">Add Team Member</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowAddMemberModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="px-6 py-6 space-y-4">
+                {/* Select Team Member */}
+                <div>
+                  <label className="label">
+                    Team Member <span className="text-red-500">*</span>
+                  </label>
+                  {loadingMembers ? (
+                    <div className="text-gray-500 text-sm">Loading team members...</div>
+                  ) : availableMembers.length === 0 ? (
+                    <div className="text-gray-500 text-sm">No team members available</div>
+                  ) : (
+                    <select
+                      value={selectedMember}
+                      onChange={(e) => setSelectedMember(e.target.value)}
+                      className="input"
+                      required
+                    >
+                      <option value="">Select a team member...</option>
+                      {availableMembers
+                        .filter((m) => !teamMembers.some((tm) => tm.team_member_id === m.id))
+                        .map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.full_name || member.email} ({member.role})
+                          </option>
+                        ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Role */}
+                <div>
+                  <label className="label">Role (Optional)</label>
+                  <input
+                    type="text"
+                    value={memberRole}
+                    onChange={(e) => setMemberRole(e.target.value)}
+                    className="input"
+                    placeholder="e.g., Designer, Developer, Writer"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Specify the role of this member in the project
+                  </p>
+                </div>
+
+                {/* Allocated Budget */}
+                <div>
+                  <label className="label">Allocated Budget (₹)</label>
+                  <input
+                    type="number"
+                    value={memberBudget}
+                    onChange={(e) => setMemberBudget(e.target.value)}
+                    className="input"
+                    placeholder="Enter budget allocation"
+                    min="0"
+                    step="0.01"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Budget allocated to this member for this project
+                  </p>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3 rounded-b-xl">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMemberModal(false)}
+                  className="btn-secondary"
+                  disabled={addingMember}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={addingMember || !selectedMember}
+                >
+                  {addingMember ? 'Adding...' : 'Add Member'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Team Member Modal */}
+      {showEditMemberModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+            <form onSubmit={handleEditTeamMember}>
+              <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-xl">
+                <h2 className="text-xl font-bold text-gray-900">Edit Team Member</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowEditMemberModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="px-6 py-6 space-y-4">
+                <div>
+                  <label className="label">Role (Optional)</label>
+                  <input
+                    type="text"
+                    value={editingMemberRole}
+                    onChange={(e) => setEditingMemberRole(e.target.value)}
+                    className="input"
+                    placeholder="e.g., Designer, Developer"
+                  />
+                </div>
+                <div>
+                  <label className="label">Allocated Budget (₹)</label>
+                  <input
+                    type="number"
+                    value={editingMemberBudget}
+                    onChange={(e) => setEditingMemberBudget(e.target.value)}
+                    className="input"
+                    placeholder="Enter budget allocation"
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3 rounded-b-xl">
+                <button
+                  type="button"
+                  onClick={() => setShowEditMemberModal(false)}
+                  className="btn-secondary"
+                  disabled={editingMemberSaving}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" disabled={editingMemberSaving}>
+                  {editingMemberSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
+            <div className="px-6 py-6">
+              <h2 className="text-xl font-semibold">Remove Team Member</h2>
+              <p className="text-gray-600 mt-2">
+                Are you sure you want to remove <strong>{deleteMemberName}</strong> from this
+                project? This action cannot be undone.
+              </p>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button onClick={() => setShowDeleteConfirm(false)} className="btn-secondary">
+                  Cancel
+                </button>
+                <button onClick={handleRemoveTeamMemberConfirmed} className="btn-danger">
+                  Remove
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -44,6 +44,7 @@ async function runMigrations() {
   const migrations = [
     '20260106_add_missing_expense_columns.sql',
     '20260106_fix_projects_rls_recursion.sql',
+    '20260111_add_project_team_member_columns.sql',
   ]
 
   let allSuccess = true
