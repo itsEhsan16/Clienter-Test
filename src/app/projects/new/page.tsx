@@ -10,7 +10,6 @@ import { ArrowLeft, Plus, X } from 'lucide-react'
 interface Client {
   id: string
   name: string
-  company_name: string | null
 }
 
 interface TeamMember {
@@ -43,25 +42,30 @@ function NewProjectPageContent() {
     name: '',
     description: '',
     client_id: preselectedClientId || '',
-    status: 'planning' as const,
+    status: 'new' as const,
     budget: '',
     start_date: '',
     deadline: '',
   })
 
   useEffect(() => {
-    if (user && organization) {
+    if (user && organization?.organizationId) {
       fetchClients()
       fetchTeamMembers()
     }
-  }, [user, organization])
+  }, [user, organization?.organizationId])
 
   const fetchClients = async () => {
+    if (!organization?.organizationId) {
+      console.error('Cannot fetch clients: No organization ID')
+      return
+    }
+
     try {
       const { data, error } = await supabase
         .from('clients')
-        .select('id, name, company_name')
-        .eq('organization_id', organization?.organizationId)
+        .select('id, name')
+        .eq('organization_id', organization.organizationId)
         .order('name')
 
       if (error) throw error
@@ -73,20 +77,23 @@ function NewProjectPageContent() {
   }
 
   const fetchTeamMembers = async () => {
+    if (!organization?.organizationId) {
+      console.error('Cannot fetch team members: No organization ID')
+      return
+    }
+
     try {
       const { data, error } = await supabase
         .from('organization_members')
         .select('id, profiles (full_name, email)')
-        .eq('organization_id', organization?.organizationId)
+        .eq('organization_id', organization.organizationId)
         .order('created_at')
 
       if (error) throw error
       setTeamMembers(
         (data || []).map((tm: any) => ({
           id: tm.id,
-          profiles: tm.profiles
-            ? tm.profiles[0] || { full_name: 'Unknown', email: '' }
-            : { full_name: 'Unknown', email: '' },
+          profiles: tm.profiles || { full_name: 'Unknown', email: '' },
         }))
       )
     } catch (error: any) {
@@ -147,6 +154,11 @@ function NewProjectPageContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    if (!organization?.organizationId) {
+      toast.error('No organization found')
+      return
+    }
+
     if (!formData.name || !formData.client_id) {
       toast.error('Please fill in all required fields')
       return
@@ -177,7 +189,8 @@ function NewProjectPageContent() {
           name: formData.name,
           description: formData.description || null,
           client_id: formData.client_id,
-          organization_id: organization?.organizationId,
+          organization_id: organization.organizationId,
+          created_by: user.id,
           status: formData.status,
           budget,
           start_date: formData.start_date || null,
@@ -214,6 +227,17 @@ function NewProjectPageContent() {
   const availableTeamMembers = teamMembers.filter(
     (tm) => !assignedMembers.some((am) => am.team_member_id === tm.id)
   )
+
+  // Show loading state while organization is being fetched
+  if (!organization?.organizationId) {
+    return (
+      <div className="p-6 max-w-4xl mx-auto">
+        <div className="text-center py-12">
+          <p className="text-gray-600">Loading organization details...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -272,7 +296,7 @@ function NewProjectPageContent() {
                   <option value="">Select a client</option>
                   {clients.map((client) => (
                     <option key={client.id} value={client.id}>
-                      {client.company_name || client.name}
+                      {client.name}
                     </option>
                   ))}
                 </select>
@@ -285,11 +309,9 @@ function NewProjectPageContent() {
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                   className="input w-full"
                 >
-                  <option value="planning">Planning</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="on_hold">On Hold</option>
+                  <option value="new">New</option>
+                  <option value="ongoing">Ongoing</option>
                   <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
                 </select>
               </div>
             </div>
@@ -410,8 +432,8 @@ function NewProjectPageContent() {
                 <div className="flex justify-between items-center pt-3 border-t">
                   <span className="text-sm font-medium text-gray-700">Total Allocated:</span>
                   <span className="text-lg font-semibold text-gray-900">
-                    ${assignedMembers.reduce((sum, m) => sum + m.allocated_budget, 0).toFixed(2)} /
-                    ${parseFloat(formData.budget || '0').toFixed(2)}
+                    ₹{assignedMembers.reduce((sum, m) => sum + m.allocated_budget, 0).toFixed(2)} /
+                    ₹{parseFloat(formData.budget || '0').toFixed(2)}
                   </span>
                 </div>
               )}

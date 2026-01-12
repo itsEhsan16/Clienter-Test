@@ -26,12 +26,19 @@ export default function MeetingsPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!user || authLoading || !supabase) return
+    if (!user || authLoading || !supabase || !organization?.organizationId) return
 
     const fetchData = async () => {
       setIsLoading(true)
 
       try {
+        // Ensure we have organization context
+        if (!organization?.organizationId) {
+          console.error('[Meetings] No organization ID available')
+          setIsLoading(false)
+          return
+        }
+
         // Verify session first
         const {
           data: { session },
@@ -64,14 +71,14 @@ export default function MeetingsPage() {
               client:clients (*)
             `
             )
-            .eq('organization_id', organization?.organizationId)
+            .eq('organization_id', organization.organizationId)
             .order('meeting_time', { ascending: true }),
 
           // Fetch clients for the form (organization scoped)
           supabase
             .from('clients')
             .select('*')
-            .eq('organization_id', organization?.organizationId)
+            .eq('organization_id', organization.organizationId)
             .order('name'),
         ])
 
@@ -103,7 +110,7 @@ export default function MeetingsPage() {
     }
 
     fetchData()
-  }, [user, authLoading, supabase])
+  }, [user, authLoading, supabase, organization?.organizationId])
 
   useEffect(() => {
     if (profile) {
@@ -116,7 +123,7 @@ export default function MeetingsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!user) return
+    if (!user || !organization?.organizationId) return
 
     setSaving(true)
 
@@ -132,7 +139,7 @@ export default function MeetingsPage() {
       .insert([
         {
           user_id: user.id,
-          organization_id: organization?.organizationId || null,
+          organization_id: organization.organizationId,
           client_id: formData.client_id || null,
           title: formData.title,
           description: formData.description || null,

@@ -1,12 +1,21 @@
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { Client } from '@/types/database'
 import { KanbanCard } from './KanbanCard'
+
+// Generic type for Kanban items (can be clients or projects)
+type KanbanItem = {
+  id: string
+  name: string
+  status: string
+  order?: number
+  phone?: string | null
+  [key: string]: any
+}
 
 interface KanbanColumnProps {
   id: string
   title: string
-  clients?: Client[]
+  clients?: KanbanItem[]
   count?: number
   currency?: string
   children?: React.ReactNode

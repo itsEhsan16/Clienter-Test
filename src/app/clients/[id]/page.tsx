@@ -275,9 +275,9 @@ export default function ClientDetailPage() {
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <div className="card p-6">
-            <div className="text-sm font-medium text-gray-600 mb-1">Total Amount</div>
+            <div className="text-sm font-medium text-gray-600 mb-1">Total Budget</div>
             <div className="text-3xl font-bold text-gray-900">
-              {formatCurrency(client.total_amount || 0, profile?.currency || 'INR')}
+              {formatCurrency(totalBudget || 0, profile?.currency || 'INR')}
             </div>
           </div>
           <div className="card p-6">

@@ -1,12 +1,19 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Client } from '@/types/database'
 import { getClientStatusColor, formatCurrency } from '@/lib/utils'
 import { Phone } from 'lucide-react'
 import Link from 'next/link'
 
+// Generic type for Kanban items (can be clients or projects)
+type KanbanItem = {
+  id: string
+  name: string
+  phone?: string | null
+  [key: string]: any
+}
+
 interface KanbanCardProps {
-  client: Client
+  client: KanbanItem
   isDragging?: boolean
   currency?: string
 }

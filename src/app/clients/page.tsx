@@ -4,7 +4,6 @@ import { useEffect, useState, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { TopBar } from '@/components/TopBar'
 import { ClientsListSkeleton } from '@/components/SkeletonLoaders'
-import { Client } from '@/types/database'
 import {
   exportToCSV,
   exportToJSON,
@@ -28,13 +27,25 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { KanbanColumn } from '@/components/KanbanColumn'
 import { KanbanCard } from '@/components/KanbanCard'
 
+// Type for project items in Kanban (project-based model)
+type ProjectKanbanItem = {
+  id: string
+  name: string
+  status: 'new' | 'ongoing' | 'completed'
+  order: number
+  phone?: string | null
+  client_id?: string | null
+  client_name?: string | null
+  _project?: any
+}
+
 const STATUSES = ['new', 'ongoing', 'completed'] as const
 
 export default function ClientsPage() {
   const { user, profile, loading: authLoading, supabase } = useAuth()
   // Internally we now display projects grouped by status (project-based model)
-  const [clients, setClients] = useState<any[]>([])
-  const [filteredClients, setFilteredClients] = useState<any[]>([])
+  const [clients, setClients] = useState<ProjectKanbanItem[]>([])
+  const [filteredClients, setFilteredClients] = useState<ProjectKanbanItem[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -135,7 +146,7 @@ export default function ClientsPage() {
   }, [searchTerm, clients])
 
   const clientsByStatus = useMemo(() => {
-    const grouped: Record<string, Client[]> = {
+    const grouped: Record<string, ProjectKanbanItem[]> = {
       new: [],
       ongoing: [],
       completed: [],
@@ -165,7 +176,7 @@ export default function ClientsPage() {
 
     // If dropped on a column (status change)
     if (STATUSES.includes(overId as any)) {
-      const newStatus = overId as Client['status']
+      const newStatus = overId as ProjectKanbanItem['status']
       if (newStatus === activeClient.status) return
 
       // Update local state
