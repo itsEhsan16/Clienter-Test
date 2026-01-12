@@ -33,13 +33,12 @@ export default function ClientDetailPage() {
   const [editData, setEditData] = useState({
     name: '',
     phone: '',
-    project_description: '',
-    total_amount: '',
-    status: 'new' as 'new' | 'ongoing' | 'completed',
   })
-  const [showAddPayment, setShowAddPayment] = useState(false)
-  const [newPaymentName, setNewPaymentName] = useState('')
-  const [newPaymentAmount, setNewPaymentAmount] = useState('')
+  const [projects, setProjects] = useState<any[]>([])
+  const [totalBudget, setTotalBudget] = useState(0)
+  const [totalPaidFromProjects, setTotalPaidFromProjects] = useState(0)
+
+  // remove per-client payment UI state (payments moved to projects)
 
   useEffect(() => {
     if (!user || !clientId) return
@@ -50,7 +49,6 @@ export default function ClientDetailPage() {
         .from('clients')
         .select('*')
         .eq('id', clientId)
-        .eq('user_id', user.id)
         .single()
 
       if (clientError) {
@@ -60,21 +58,32 @@ export default function ClientDetailPage() {
       }
 
       if (clientData) {
-        const paymentsSorted =
-          clientData.payments && clientData.payments.length
-            ? [...clientData.payments].sort(
-                (a: any, b: any) => +new Date(b.created_at) - +new Date(a.created_at)
-              )
-            : []
-
-        setClient({ ...clientData, payments: paymentsSorted })
+        setClient(clientData)
         setEditData({
           name: clientData.name,
           phone: clientData.phone || '',
-          project_description: clientData.project_description || '',
-          total_amount: clientData.total_amount ? clientData.total_amount.toString() : '',
-          status: clientData.status,
         })
+
+        // Fetch projects for this client and compute aggregates
+        const { data: projectsData, error: projectsError } = await supabase
+          .from('projects')
+          .select('id, name, budget, total_paid, status, created_at')
+          .eq('client_id', clientId)
+          .order('created_at', { ascending: false })
+
+        if (!projectsError && projectsData) {
+          setProjects(projectsData)
+          const budgetSum = projectsData.reduce(
+            (s: number, p: any) => s + (Number(p.budget) || 0),
+            0
+          )
+          const paidSum = projectsData.reduce(
+            (s: number, p: any) => s + (Number(p.total_paid) || 0),
+            0
+          )
+          setTotalBudget(budgetSum)
+          setTotalPaidFromProjects(paidSum)
+        }
       } else {
         router.push('/clients')
         return
@@ -104,10 +113,6 @@ export default function ClientDetailPage() {
       .update({
         name: editData.name,
         phone: editData.phone || null,
-        project_description: editData.project_description || null,
-        total_amount: editData.total_amount ? parseFloat(editData.total_amount) : null,
-        // keep payments as-is when updating basic client info
-        status: editData.status,
         updated_at: new Date().toISOString(),
       })
       .eq('id', client.id)
@@ -117,74 +122,8 @@ export default function ClientDetailPage() {
         ...client,
         name: editData.name,
         phone: editData.phone || null,
-        project_description: editData.project_description || null,
-        total_amount: editData.total_amount ? parseFloat(editData.total_amount) : null,
-        // payments remain unchanged here
-        status: editData.status,
       })
       setIsEditing(false)
-    }
-  }
-
-  const handleAddPayment = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault()
-    if (!client) return
-
-    const amount = parseFloat(newPaymentAmount || '0')
-    if (!newPaymentName || !amount || amount <= 0) {
-      alert('Please enter a valid payment name and amount')
-      return
-    }
-
-    const existingPayments = client.payments && client.payments.length ? client.payments : []
-    const newEntry = { name: newPaymentName, amount, created_at: new Date().toISOString() }
-    const updatedPayments = [newEntry, ...existingPayments]
-    const totalPaid = updatedPayments.reduce((s, p) => s + (p.amount || 0), 0)
-
-    const { error } = await supabase
-      .from('clients')
-      .update({
-        payments: updatedPayments,
-        advance_paid: totalPaid,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', client.id)
-
-    if (!error) {
-      setClient({ ...client, payments: updatedPayments, advance_paid: totalPaid })
-      setNewPaymentAmount('')
-      setNewPaymentName('')
-      setShowAddPayment(false)
-    } else {
-      console.error('Failed to add payment', error)
-      alert('Failed to add payment')
-    }
-  }
-
-  const handleDeletePayment = async (index: number) => {
-    if (!client) return
-    if (!confirm('Delete this payment? This cannot be undone.')) return
-
-    const existingPayments = client.payments && client.payments.length ? client.payments : []
-    if (index < 0 || index >= existingPayments.length) return
-
-    const updatedPayments = existingPayments.filter((_, i) => i !== index)
-    const totalPaid = updatedPayments.reduce((s, p) => s + (p.amount || 0), 0)
-
-    const { error } = await supabase
-      .from('clients')
-      .update({
-        payments: updatedPayments,
-        advance_paid: totalPaid,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', client.id)
-
-    if (!error) {
-      setClient({ ...client, payments: updatedPayments, advance_paid: totalPaid })
-    } else {
-      console.error('Failed to delete payment', error)
-      alert('Failed to delete payment')
     }
   }
 
@@ -214,11 +153,8 @@ export default function ClientDetailPage() {
   }
 
   const upcomingMeetings = meetings.filter((m) => new Date(m.meeting_time) > new Date())
-  const totalPaid =
-    client.payments && client.payments.length
-      ? client.payments.reduce((s, p) => s + (p.amount || 0), 0)
-      : client.advance_paid || 0
-  const balance = (client?.total_amount || 0) - totalPaid
+  const totalPaid = totalPaidFromProjects || 0
+  const balance = (totalBudget || 0) - totalPaid
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -257,49 +193,7 @@ export default function ClientDetailPage() {
                   placeholder="+1 (555) 123-4567"
                 />
               </div>
-              <div>
-                <label className="label">Project Description</label>
-                <textarea
-                  rows={3}
-                  value={editData.project_description}
-                  onChange={(e) =>
-                    setEditData({ ...editData, project_description: e.target.value })
-                  }
-                  className="input"
-                  placeholder="Brief description of the project or service..."
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="label">Total Amount</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={editData.total_amount}
-                    onChange={(e) => setEditData({ ...editData, total_amount: e.target.value })}
-                    className="input"
-                    placeholder="5000.00"
-                  />
-                </div>
-                <div>
-                  <label className="label">Status</label>
-                  <select
-                    value={editData.status}
-                    onChange={(e) =>
-                      setEditData({
-                        ...editData,
-                        status: e.target.value as 'new' | 'ongoing' | 'completed',
-                      })
-                    }
-                    className="input"
-                  >
-                    <option value="new">New</option>
-                    <option value="ongoing">Ongoing</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                </div>
-              </div>
+
               <div className="flex justify-end space-x-3">
                 <button type="button" onClick={() => setIsEditing(false)} className="btn-secondary">
                   Cancel
@@ -315,29 +209,23 @@ export default function ClientDetailPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h1 className="text-3xl font-bold text-gray-900">{client.name}</h1>
-                    <span
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${getClientStatusColor(
-                        client.status || 'new'
-                      )}`}
-                    >
-                      {getClientStatusLabel(client.status || 'new')}
-                    </span>
                   </div>
-                  {client.total_amount && (
-                    <p className="text-lg text-gray-600 mt-1 flex items-center">
-                      Total: {formatCurrency(client.total_amount, profile?.currency || 'INR')}
-                    </p>
-                  )}
-                  {totalPaid > 0 && (
-                    <p className="text-lg text-green-600 mt-1 flex items-center">
-                      Paid: {formatCurrency(totalPaid, profile?.currency || 'INR')}
-                    </p>
-                  )}
-                  {client.total_amount !== undefined && (
-                    <p className="text-lg text-orange-600 mt-1 flex items-center">
-                      Balance: {formatCurrency(balance, profile?.currency || 'INR')}
-                    </p>
-                  )}
+
+                  {/* Project-based aggregates */}
+                  <p className="text-lg text-gray-600 mt-1 flex items-center">
+                    Total Budget: {formatCurrency(totalBudget || 0, profile?.currency || 'INR')}
+                  </p>
+                  <p className="text-lg text-green-600 mt-1 flex items-center">
+                    Total Paid:{' '}
+                    {formatCurrency(totalPaidFromProjects || 0, profile?.currency || 'INR')}
+                  </p>
+                  <p className="text-lg text-orange-600 mt-1 flex items-center">
+                    Balance:{' '}
+                    {formatCurrency(
+                      (totalBudget || 0) - (totalPaidFromProjects || 0),
+                      profile?.currency || 'INR'
+                    )}
+                  </p>
                 </div>
                 <div className="flex space-x-2">
                   <Link href={`/projects/new?client=${client.id}`} className="btn-primary">
@@ -357,13 +245,6 @@ export default function ClientDetailPage() {
                   </button>
                 </div>
               </div>
-
-              {client.project_description && (
-                <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Project Description</h3>
-                  <p className="text-gray-600 whitespace-pre-wrap">{client.project_description}</p>
-                </div>
-              )}
 
               {client.phone && (
                 <div className="mb-4 flex items-center text-gray-600">
@@ -413,83 +294,48 @@ export default function ClientDetailPage() {
           </div>
         </div>
 
-        {/* Payments list / add payment */}
+        {/* Projects list for this client */}
         <div className="card p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Payments</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Projects</h3>
             <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setShowAddPayment((s) => !s)}
-                className="btn-secondary flex items-center"
+              <Link
+                href={`/projects/new?client=${client.id}`}
+                className="btn-primary flex items-center"
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Add Payment
-              </button>
+                New Project
+              </Link>
             </div>
           </div>
 
-          {client.payments && client.payments.length > 0 ? (
+          {projects && projects.length > 0 ? (
             <ul className="space-y-2 mb-4">
-              {client.payments.map((p, idx) => (
-                <li key={idx} className="flex items-center justify-between">
+              {projects.map((p) => (
+                <li key={p.id} className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium">{`Payment ${idx + 1}: ${p.name}`}</div>
-                    <div className="text-xs text-gray-500">
-                      {p.created_at ? formatRelativeTime(p.created_at) : ''}
-                    </div>
+                    <div className="text-sm font-medium">{p.name}</div>
+                    <div className="text-xs text-gray-500">{p.status}</div>
                   </div>
                   <div className="flex items-center space-x-3">
                     <div className="text-sm font-semibold">
-                      {formatCurrency(p.amount || 0, profile?.currency || 'INR')}
+                      {formatCurrency(p.total_paid || 0, profile?.currency || 'INR')}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePayment(idx)}
-                      className="text-gray-400 hover:text-red-600"
-                      aria-label={`Delete payment ${idx + 1}`}
+                    <div className="text-xs text-gray-500">
+                      {formatCurrency(p.budget || 0, profile?.currency || 'INR')}
+                    </div>
+                    <Link
+                      href={`/projects/${p.id}`}
+                      className="text-primary-600 hover:text-primary-700"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      View
+                    </Link>
                   </div>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-gray-500 mb-4">No payments recorded yet.</p>
-          )}
-
-          {showAddPayment && (
-            <form onSubmit={handleAddPayment} className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <input
-                placeholder="Payment name (e.g. Advance)"
-                value={newPaymentName}
-                onChange={(e) => setNewPaymentName(e.target.value)}
-                className="input"
-                required
-              />
-              <input
-                placeholder="Amount"
-                type="number"
-                step="0.01"
-                min="0"
-                value={newPaymentAmount}
-                onChange={(e) => setNewPaymentAmount(e.target.value)}
-                className="input"
-                required
-              />
-              <div className="flex space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddPayment(false)}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  Save Payment
-                </button>
-              </div>
-            </form>
+            <p className="text-gray-500 mb-4">No projects for this client yet.</p>
           )}
         </div>
 

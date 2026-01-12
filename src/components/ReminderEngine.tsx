@@ -9,7 +9,7 @@ import { formatRelativeTime } from '@/lib/date-utils'
 import { Bell } from 'lucide-react'
 
 export function ReminderEngine() {
-  const { user, supabase } = useAuth()
+  const { user, supabase, organization } = useAuth()
   const { reminders, activeReminders, setReminders, checkReminders, dismissReminder } =
     useReminderStore()
 
@@ -36,7 +36,7 @@ export function ReminderEngine() {
           )
         `
         )
-        .eq('user_id', user.id)
+        .eq('organization_id', organization?.organizationId)
         .eq('is_dismissed', false)
         .gte('remind_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
 

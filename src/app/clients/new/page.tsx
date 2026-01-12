@@ -7,7 +7,7 @@ import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 
 export default function NewClientPage() {
-  const { user, supabase } = useAuth()
+  const { user, supabase, organization, refreshOrganization } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -15,10 +15,6 @@ export default function NewClientPage() {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    project_description: '',
-    total_amount: '',
-    advance_paid: '',
-    status: 'new' as 'new' | 'ongoing' | 'completed',
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -33,12 +29,37 @@ export default function NewClientPage() {
     setSuccess(false)
 
     try {
-      // Get the max order for the selected status
+      // Ensure the user belongs to an organization (org-based RLS)
+      let orgId = organization?.organizationId || null
+
+      if (!orgId) {
+        try {
+          const { data: membership, error: membershipError } = await supabase
+            .from('organization_members')
+            .select('organization_id')
+            .eq('user_id', user.id)
+            .eq('status', 'active')
+            .limit(1)
+
+          if (membership && membership.length > 0) {
+            orgId = membership[0].organization_id
+          }
+        } catch (err) {
+          console.warn('Could not fetch organization membership:', err)
+        }
+      }
+
+      if (!orgId) {
+        setError('You must be part of an active organization to create a client')
+        setLoading(false)
+        return
+      }
+
+      // Get the max order within the organization
       const { data: maxOrderData } = await supabase
         .from('clients')
         .select('order')
-        .eq('user_id', user.id)
-        .eq('status', formData.status)
+        .eq('organization_id', orgId)
         .order('order', { ascending: false })
         .limit(1)
 
@@ -47,12 +68,9 @@ export default function NewClientPage() {
 
       const clientData = {
         user_id: user.id,
+        organization_id: orgId,
         name: formData.name.trim(),
         phone: formData.phone.trim() || null,
-        project_description: formData.project_description.trim() || null,
-        total_amount: formData.total_amount ? parseFloat(formData.total_amount) : null,
-        advance_paid: formData.advance_paid ? parseFloat(formData.advance_paid) : 0,
-        status: formData.status,
         order: nextOrder,
       }
 
@@ -71,10 +89,6 @@ export default function NewClientPage() {
         setFormData({
           name: '',
           phone: '',
-          project_description: '',
-          total_amount: '',
-          advance_paid: '',
-          status: 'new',
         })
         // keep the success message briefly, but do NOT navigate away
         setTimeout(() => setSuccess(false), 1500)
@@ -183,78 +197,6 @@ export default function NewClientPage() {
                 placeholder="+1 (555) 123-4567"
                 disabled={loading}
               />
-            </div>
-
-            <div>
-              <label htmlFor="project_description" className="label">
-                Project Description
-              </label>
-              <textarea
-                id="project_description"
-                name="project_description"
-                rows={3}
-                value={formData.project_description}
-                onChange={handleChange}
-                className="input"
-                placeholder="Brief description of the project or service..."
-                disabled={loading}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <label htmlFor="total_amount" className="label">
-                  Total Amount
-                </label>
-                <input
-                  type="number"
-                  id="total_amount"
-                  name="total_amount"
-                  step="0.01"
-                  min="0"
-                  value={formData.total_amount}
-                  onChange={handleChange}
-                  className="input"
-                  placeholder="5000.00"
-                  disabled={loading}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="advance_paid" className="label">
-                  Advance Paid
-                </label>
-                <input
-                  type="number"
-                  id="advance_paid"
-                  name="advance_paid"
-                  step="0.01"
-                  min="0"
-                  value={formData.advance_paid}
-                  onChange={handleChange}
-                  className="input"
-                  placeholder="1000.00"
-                  disabled={loading}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="status" className="label">
-                  Status
-                </label>
-                <select
-                  id="status"
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  className="input"
-                  disabled={loading}
-                >
-                  <option value="new">New</option>
-                  <option value="ongoing">Ongoing</option>
-                  <option value="completed">Completed</option>
-                </select>
-              </div>
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">

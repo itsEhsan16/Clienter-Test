@@ -32,7 +32,7 @@ interface MonthlyStats {
 }
 
 export default function DashboardPage() {
-  const { user, profile, loading: authLoading, supabase } = useAuth()
+  const { user, profile, loading: authLoading, supabase, organization } = useAuth()
   const [recentClients, setRecentClients] = useState<Client[]>([])
   const [upcomingReminders, setUpcomingReminders] = useState<ReminderWithMeeting[]>([])
   const [stats, setStats] = useState({
@@ -194,7 +194,7 @@ export default function DashboardPage() {
             supabase
               .from('clients')
               .select('*')
-              .eq('user_id', user.id)
+              .eq('organization_id', organization?.organizationId)
               .order('created_at', { ascending: false })
               .limit(5)
               .then((result: any) => {
@@ -210,7 +210,7 @@ export default function DashboardPage() {
             supabase
               .from('reminders')
               .select(`*,meeting:meetings (*,client:clients (*))`)
-              .eq('user_id', user.id)
+              .eq('organization_id', organization?.organizationId)
               .eq('is_dismissed', false)
               .gte('remind_at', new Date().toISOString())
               .order('remind_at', { ascending: true })
@@ -226,7 +226,7 @@ export default function DashboardPage() {
             supabase
               .from('clients')
               .select('*', { count: 'exact', head: true })
-              .eq('user_id', user.id)
+              .eq('organization_id', organization?.organizationId)
               .then((result: any) => {
                 console.log('[Dashboard] Clients count result:', {
                   error: result.error,
@@ -236,11 +236,11 @@ export default function DashboardPage() {
               }),
 
             supabase
-              .from('clients')
-              .select('total_amount, advance_paid, payments, status, created_at')
-              .eq('user_id', user.id)
+              .from('projects')
+              .select('budget, total_paid, status, created_at')
+              .eq('organization_id', organization?.organizationId)
               .then((result: any) => {
-                console.log('[Dashboard] All clients result:', {
+                console.log('[Dashboard] All projects result:', {
                   error: result.error,
                   count: result.data?.length || 0,
                 })
@@ -250,7 +250,7 @@ export default function DashboardPage() {
             supabase
               .from('meetings')
               .select('*', { count: 'exact', head: true })
-              .eq('user_id', user.id)
+              .eq('organization_id', organization?.organizationId)
               .then((result: any) => {
                 console.log('[Dashboard] Meetings count result:', {
                   error: result.error,
@@ -262,7 +262,7 @@ export default function DashboardPage() {
             supabase
               .from('expenses')
               .select('amount')
-              .eq('user_id', user.id)
+              .eq('organization_id', organization?.organizationId)
               .then((result: any) => {
                 console.log('[Dashboard] Expenses result:', {
                   error: result.error,
@@ -303,43 +303,40 @@ export default function DashboardPage() {
           console.error('[Dashboard] Expenses fetch error:', expensesResult.error)
         }
 
-        // Calculate totals and statistics
-        const allClients = allClientsResult.data || []
+        // Calculate totals and statistics from projects (project-based financial model)
+        const allProjects = allClientsResult.data || []
 
-        const getPaid = (c: any) =>
-          c?.payments && c.payments.length
-            ? c.payments.reduce((s: number, p: any) => s + (p?.amount || 0), 0)
-            : c?.advance_paid || 0
+        const getPaid = (p: any) => Number(p.total_paid || 0)
 
-        // Status-based counts
-        const newClients = allClients.filter((c: any) => c.status === 'new').length
-        const ongoingClients = allClients.filter((c: any) => c.status === 'ongoing').length
-        const completedClients = allClients.filter((c: any) => c.status === 'completed').length
+        // Status-based counts (projects)
+        const newClients = allProjects.filter((p: any) => p.status === 'new').length
+        const ongoingClients = allProjects.filter((p: any) => p.status === 'ongoing').length
+        const completedClients = allProjects.filter((p: any) => p.status === 'completed').length
 
         // Overall totals (all statuses)
-        const totalRevenue = allClients.reduce(
-          (sum: number, c: any) => sum + (c.total_amount || 0),
+        const totalRevenue = allProjects.reduce(
+          (sum: number, p: any) => sum + (Number(p.budget) || 0),
           0
         )
-        const totalPaid = allClients.reduce((sum: number, c: any) => sum + getPaid(c), 0)
+        const totalPaid = allProjects.reduce((sum: number, p: any) => sum + getPaid(p), 0)
         const totalPending = totalRevenue - totalPaid
 
         // Monthly calculations (current month)
         const now = new Date()
         const currentMonth = now.getMonth()
         const currentYear = now.getFullYear()
-        const monthlyClients = allClients.filter((c: any) => {
-          const createdDate = new Date(c.created_at)
+        const monthlyProjects = allProjects.filter((p: any) => {
+          const createdDate = new Date(p.created_at)
           return (
             createdDate.getMonth() === currentMonth && createdDate.getFullYear() === currentYear
           )
         })
 
-        const monthlyRevenue = monthlyClients.reduce(
-          (sum: number, c: any) => sum + (c.total_amount || 0),
+        const monthlyRevenue = monthlyProjects.reduce(
+          (sum: number, p: any) => sum + (Number(p.budget) || 0),
           0
         )
-        const monthlyPaid = monthlyClients.reduce((sum: number, c: any) => sum + getPaid(c), 0)
+        const monthlyPaid = monthlyProjects.reduce((sum: number, p: any) => sum + getPaid(p), 0)
         const monthlyPending = monthlyRevenue - monthlyPaid
 
         // Calculate monthly data for the last 6 months
@@ -350,23 +347,23 @@ export default function DashboardPage() {
           const year = date.getFullYear()
           const targetMonth = date.getMonth()
 
-          const clientsInMonth = allClients.filter((c: any) => {
-            const createdDate = new Date(c.created_at)
+          const projectsInMonth = allProjects.filter((p: any) => {
+            const createdDate = new Date(p.created_at)
             return createdDate.getMonth() === targetMonth && createdDate.getFullYear() === year
           })
 
-          const revenue = clientsInMonth.reduce(
-            (sum: number, c: any) => sum + (c.total_amount || 0),
+          const revenue = projectsInMonth.reduce(
+            (sum: number, p: any) => sum + (Number(p.budget) || 0),
             0
           )
-          const paid = clientsInMonth.reduce((sum: number, c: any) => sum + getPaid(c), 0)
+          const paid = projectsInMonth.reduce((sum: number, p: any) => sum + getPaid(p), 0)
 
           monthlyDataCalc.push({
             month: `${month} ${year}`,
             revenue,
             paid,
             pending: revenue - paid,
-            clientCount: clientsInMonth.length,
+            clientCount: projectsInMonth.length,
           })
         }
 
@@ -477,7 +474,7 @@ export default function DashboardPage() {
           monthlyRevenue,
           monthlyPaid,
           monthlyPending,
-          monthlyNewClients: monthlyClients.length,
+          monthlyNewClients: monthlyProjects.length,
           totalExpenses,
           profit,
         })
@@ -502,7 +499,7 @@ export default function DashboardPage() {
     }
 
     fetchDashboardData()
-  }, [user, authLoading, supabase, hasFetched])
+  }, [user, authLoading, supabase, organization?.organizationId, hasFetched])
 
   // Show skeleton while loading
   if (authLoading || isLoading) {
@@ -1024,43 +1021,11 @@ export default function DashboardPage() {
                             <p className="text-sm font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">
                               {client.name}
                             </p>
-                            {client.project_description && (
-                              <p className="text-xs text-gray-500 truncate">
-                                {client.project_description}
-                              </p>
-                            )}
-                            {client.total_amount && (
-                              <div className="flex items-center space-x-2 mt-1">
-                                <span className="text-xs font-medium text-green-600">
-                                  {formatCurrency(client.total_amount, profile?.currency || 'INR')}
-                                </span>
-                                {(() => {
-                                  const paid =
-                                    client.payments && client.payments.length
-                                      ? client.payments.reduce(
-                                          (s: number, p: any) => s + (p?.amount || 0),
-                                          0
-                                        )
-                                      : client.advance_paid || 0
-                                  return (
-                                    paid > 0 && (
-                                      <span className="text-xs text-gray-500">
-                                        • Paid: {formatCurrency(paid, profile?.currency || 'INR')}
-                                      </span>
-                                    )
-                                  )
-                                })()}
-                              </div>
+                            {client.phone && (
+                              <p className="text-xs text-gray-500 truncate">{client.phone}</p>
                             )}
                           </div>
                           <div className="flex flex-col items-end ml-2">
-                            <span
-                              className={`text-xs px-2 py-1 rounded-full font-medium ${getClientStatusColor(
-                                client.status
-                              )}`}
-                            >
-                              {getClientStatusLabel(client.status)}
-                            </span>
                             <p className="text-xs text-gray-400 mt-1">
                               {formatTimeAgo(client.created_at)}
                             </p>

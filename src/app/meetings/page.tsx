@@ -9,7 +9,7 @@ import { Plus, Calendar, ExternalLink, Video, X } from 'lucide-react'
 import Link from 'next/link'
 
 export default function MeetingsPage() {
-  const { user, profile, loading: authLoading, supabase } = useAuth()
+  const { user, profile, loading: authLoading, supabase, organization } = useAuth()
   const [meetings, setMeetings] = useState<MeetingWithDetails[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [showModal, setShowModal] = useState(false)
@@ -55,7 +55,7 @@ export default function MeetingsPage() {
 
         // Parallel data fetching
         const fetchPromise = Promise.all([
-          // Fetch meetings
+          // Fetch meetings for the organization
           supabase
             .from('meetings')
             .select(
@@ -64,11 +64,15 @@ export default function MeetingsPage() {
               client:clients (*)
             `
             )
-            .eq('user_id', user.id)
+            .eq('organization_id', organization?.organizationId)
             .order('meeting_time', { ascending: true }),
 
-          // Fetch clients for the form
-          supabase.from('clients').select('*').eq('user_id', user.id).order('name'),
+          // Fetch clients for the form (organization scoped)
+          supabase
+            .from('clients')
+            .select('*')
+            .eq('organization_id', organization?.organizationId)
+            .order('name'),
         ])
 
         const [meetingsResult, clientsResult] = await Promise.race([fetchPromise, timeoutPromise])
@@ -122,12 +126,13 @@ export default function MeetingsPage() {
       new Date(meetingTime).getTime() - reminderMinutes * 60000
     ).toISOString()
 
-    // Insert meeting
+    // Insert meeting (include organization_id)
     const { data: meeting, error: meetingError } = await supabase
       .from('meetings')
       .insert([
         {
           user_id: user.id,
+          organization_id: organization?.organizationId || null,
           client_id: formData.client_id || null,
           title: formData.title,
           description: formData.description || null,

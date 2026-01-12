@@ -32,8 +32,9 @@ const STATUSES = ['new', 'ongoing', 'completed'] as const
 
 export default function ClientsPage() {
   const { user, profile, loading: authLoading, supabase } = useAuth()
-  const [clients, setClients] = useState<Client[]>([])
-  const [filteredClients, setFilteredClients] = useState<Client[]>([])
+  // Internally we now display projects grouped by status (project-based model)
+  const [clients, setClients] = useState<any[]>([])
+  const [filteredClients, setFilteredClients] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -76,27 +77,39 @@ export default function ClientsPage() {
           setTimeout(() => reject(new Error('Fetch clients timed out after 10 seconds')), 10000)
         )
 
+        // Fetch projects and map them to a lightweight item shape for the Kanban
         const fetchPromise = supabase
-          .from('clients')
-          .select('*')
-          .eq('user_id', user.id)
+          .from('projects')
+          .select('id, name, status, "order", client:clients (name, phone, id)')
+          .eq('created_by', user.id)
           .order('status', { ascending: true })
           .order('order', { ascending: true })
 
         const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
 
-        console.log('[Clients] Query result:', {
+        console.log('[Clients] Projects query result:', {
           error: error,
           count: data?.length || 0,
         })
 
         if (error) {
-          setError('Failed to load clients: ' + error.message)
-          console.error('[Clients] Clients fetch error:', error)
+          setError('Failed to load projects: ' + error.message)
+          console.error('[Clients] Projects fetch error:', error)
         }
         if (data) {
-          setClients(data)
-          setFilteredClients(data)
+          const mapped = (data || []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            status: p.status,
+            order: p.order || 0,
+            phone: p.client && p.client[0] ? p.client[0].phone : null,
+            client_id: p.client && p.client[0] ? p.client[0].id : null,
+            client_name: p.client && p.client[0] ? p.client[0].name : null,
+            // attach original project payload for reference
+            _project: p,
+          }))
+          setClients(mapped)
+          setFilteredClients(mapped)
         }
       } catch (err: any) {
         setError('Failed to load clients: ' + (err?.message || 'Unknown error'))
@@ -160,12 +173,12 @@ export default function ClientsPage() {
 
       // Update database
       const { error } = await supabase
-        .from('clients')
+        .from('projects')
         .update({ status: newStatus })
         .eq('id', activeId)
 
       if (error) {
-        console.error('Error updating client status:', error)
+        console.error('Error updating project status:', error)
         // Revert on error
         setClients((prev) =>
           prev.map((c) => (c.id === activeId ? { ...c, status: activeClient.status } : c))
@@ -207,20 +220,32 @@ export default function ClientsPage() {
 
       for (const update of updates) {
         const { error } = await supabase
-          .from('clients')
+          .from('projects')
           .update({ order: update.order })
           .eq('id', update.id)
 
         if (error) {
-          console.error('Error updating client order:', error)
-          // Revert on error - refetch clients
+          console.error('Error updating project order:', error)
+          // Revert on error - refetch projects
           const { data } = await supabase
-            .from('clients')
-            .select('*')
-            .eq('user_id', user.id)
+            .from('projects')
+            .select('id, name, status, "order", client:clients (name, phone, id)')
+            .eq('created_by', user.id)
             .order('status', { ascending: true })
             .order('order', { ascending: true })
-          if (data) setClients(data)
+          if (data) {
+            const mapped = (data || []).map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              status: p.status,
+              order: p.order || 0,
+              phone: p.client && p.client[0] ? p.client[0].phone : null,
+              client_id: p.client && p.client[0] ? p.client[0].id : null,
+              client_name: p.client && p.client[0] ? p.client[0].name : null,
+              _project: p,
+            }))
+            setClients(mapped)
+          }
           break
         }
       }
@@ -330,39 +355,33 @@ export default function ClientsPage() {
           </DragOverlay>
         </DndContext>
 
-        {/* Completed Clients Section */}
+        {/* Completed Projects Section */}
         {clientsByStatus.completed.length > 0 && (
           <div className="mt-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Completed Clients</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Completed Projects</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {clientsByStatus.completed.map((client) => (
+              {clientsByStatus.completed.map((item) => (
                 <Link
-                  key={client.id}
-                  href={`/clients/${client.id}`}
+                  key={item.id}
+                  href={`/projects/${item.id}`}
                   className="card p-4 block hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-900">{client.name}</h3>
-                    <span
-                      className={`px-2 py-1 text-xs rounded-full ${getClientStatusColor(
-                        client.status || 'new'
-                      )}`}
-                    >
-                      {getClientStatusLabel(client.status || 'new')}
+                    <h3 className="font-semibold text-gray-900">{item.name}</h3>
+                    <span className={`px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700`}>
+                      {getClientStatusLabel(item.status || 'new')}
                     </span>
                   </div>
-                  {client.phone && (
+                  {item.client_name && (
                     <p className="text-sm text-gray-600 mb-2">
                       <Phone className="w-4 h-4 inline mr-1" />
-                      {client.phone}
+                      {item.client_name}
                     </p>
                   )}
-                  {client.project_description && (
-                    <p className="text-sm text-gray-600 mb-2">{client.project_description}</p>
-                  )}
-                  {(client as any)?.budget != null && (
+
+                  {item._project && item._project.budget != null && (
                     <p className="text-sm font-medium text-gray-900">
-                      Budget: {formatCurrency((client as any).budget, profile?.currency || 'INR')}
+                      Budget: {formatCurrency(item._project.budget, profile?.currency || 'INR')}
                     </p>
                   )}
                 </Link>

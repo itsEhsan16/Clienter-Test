@@ -43,36 +43,13 @@ export function KanbanCard({ client, isDragging, currency = 'USD' }: KanbanCardP
           <div className="flex-1 min-w-0">
             <h4 className="text-sm font-bold text-gray-900 truncate">{client.name}</h4>
           </div>
-          <span
-            className={`px-2 py-1 rounded-full text-xs font-medium ${getClientStatusColor(
-              client.status
-            )}`}
-          >
-            {client.status}
-          </span>
         </div>
 
-        {client.total_amount && (
-          <p className="text-sm font-semibold text-gray-700 mb-2">
-            Total: {formatCurrency(client.total_amount, currency)}
+        {client.phone && (
+          <p className="text-xs text-gray-600 flex items-center">
+            <Phone className="w-3 h-3 mr-1" />
+            {client.phone}
           </p>
-        )}
-        {(() => {
-          const totalPaid =
-            client.payments && client.payments.length
-              ? client.payments.reduce((s, p) => s + (p?.amount || 0), 0)
-              : client.advance_paid || 0
-          return (
-            totalPaid > 0 && (
-              <p className="text-sm text-green-600 mb-2">
-                Paid: {formatCurrency(totalPaid, currency)}
-              </p>
-            )
-          )
-        })()}
-
-        {client.project_description && (
-          <p className="text-xs text-gray-600 mb-2 line-clamp-2">{client.project_description}</p>
         )}
 
         {client.phone && (

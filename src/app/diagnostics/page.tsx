@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function DiagnosticsPage() {
-  const { user, profile, supabase } = useAuth()
+  const { user, profile, supabase, organization } = useAuth()
   const [envCheck, setEnvCheck] = useState<any>(null)
   const [dbTest, setDbTest] = useState<any>(null)
   const [authTest, setAuthTest] = useState<any>(null)
@@ -117,7 +117,7 @@ export default function DiagnosticsPage() {
                 const { data, error } = await supabase
                   .from('clients')
                   .select('*')
-                  .eq('user_id', user.id)
+                  .eq('organization_id', organization?.organizationId)
                 console.log('Manual clients fetch:', { data, error })
                 alert(
                   error ? `Error: ${error.message}` : `Success! Found ${data?.length || 0} clients`

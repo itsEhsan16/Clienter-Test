@@ -12,7 +12,7 @@ interface NotificationCenterProps {
 }
 
 export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps) {
-  const { user, supabase } = useAuth()
+  const { user, supabase, organization } = useAuth()
   const [reminders, setReminders] = useState<ReminderWithMeeting[]>([])
 
   useEffect(() => {
@@ -30,7 +30,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
           )
         `
         )
-        .eq('user_id', user.id)
+        .eq('organization_id', organization?.organizationId)
         .eq('is_dismissed', false)
         .order('remind_at', { ascending: true })
         .limit(20)

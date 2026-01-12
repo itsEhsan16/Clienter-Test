@@ -252,13 +252,8 @@ export interface Client {
   phone: string | null
   created_at: string
   updated_at: string
-  // Optional fields present in some queries
-  project_description?: string | null
-  payments?: any[]
-  total_amount?: number | null
-  advance_paid?: number | null
-  status?: string
-  budget?: number | null
+  // Clients are now simple: only name and phone are stored. Financials moved to `projects`.
+  // Legacy optional fields removed from the type to reflect the new schema.
 }
 
 export interface ClientWithMeetings extends Client {
