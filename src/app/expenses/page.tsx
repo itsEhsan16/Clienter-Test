@@ -20,6 +20,7 @@ interface Expense {
   category: string | null
   project_id: string | null
   project_team_member_id: string | null
+  team_member_id: string | null
   total_amount: number | null
   paid_amount: number | null
   payment_status: 'pending' | 'partial' | 'completed' | null

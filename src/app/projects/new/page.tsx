@@ -180,6 +180,11 @@ function NewProjectPageContent() {
     }
 
     try {
+      if (!user?.id) {
+        toast.error('You must be signed in to create a project')
+        return
+      }
+
       setLoading(true)
 
       // Create project
