@@ -378,22 +378,91 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       return NextResponse.json({ error: 'Assignment not found for this project' }, { status: 404 })
     }
 
-    const updateData: any = { updated_at: new Date().toISOString() }
+    const updateData: any = {}
     if (allocated_budget !== undefined)
       updateData.allocated_budget = allocated_budget ? parseFloat(allocated_budget) : null
     if (role !== undefined) updateData.role = role || null
     if (status !== undefined) updateData.status = status
 
-    const { data: updated, error } = await supabaseAdmin
-      .from('project_team_members')
-      .update(updateData)
-      .eq('id', assignmentId)
-      .select(`*, profiles ( id, email, full_name )`)
-      .single()
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    }
 
-    if (error) {
-      console.error('[Project Team API] Error updating team member:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    let updateError: any = null
+    let updated: any = null
+
+    try {
+      const resp = await supabaseAdmin
+        .from('project_team_members')
+        .update({ ...updateData, updated_at: new Date().toISOString() })
+        .eq('id', assignmentId)
+        .select(`*, profiles ( id, email, full_name )`)
+        .maybeSingle()
+
+      updated = resp.data
+      updateError = resp.error
+    } catch (err: any) {
+      updateError = err
+    }
+
+    // Retry without role/updated_at if the schema is missing them (keep allocated_budget)
+    if (
+      updateError &&
+      /Could not find the 'role' column|could not find the|column "\w+" does not exist/i.test(
+        updateError.message || ''
+      )
+    ) {
+      console.warn(
+        '[Project Team API] Update failed due to missing column, retrying without optional fields',
+        updateError.message
+      )
+      delete updateData.role
+
+      try {
+        const resp2 = await supabaseAdmin
+          .from('project_team_members')
+          .update(updateData)
+          .eq('id', assignmentId)
+          .select(`*, profiles ( id, email, full_name )`)
+          .maybeSingle()
+
+        updated = resp2.data
+        updateError = resp2.error
+      } catch (err2: any) {
+        updateError = err2
+      }
+    }
+
+    if (updateError) {
+      console.error('[Project Team API] Error updating team member:', updateError)
+      return NextResponse.json(
+        {
+          error:
+            updateError.message ||
+            "Failed to update team member. If the error mentions missing columns (e.g., 'role'), please run the migration `supabase/migrations/20260111_add_project_team_member_columns.sql` in Supabase SQL editor and retry.",
+        },
+        { status: 500 }
+      )
+    }
+
+    if (!updated) {
+      // Fallback: fetch the updated row directly
+      const { data: fetched, error: fetchError } = await supabaseAdmin
+        .from('project_team_members')
+        .select(`*, profiles ( id, email, full_name )`)
+        .eq('id', assignmentId)
+        .maybeSingle()
+
+      if (fetchError) {
+        console.error('[Project Team API] Error fetching assignment after update:', fetchError)
+        return NextResponse.json({ error: fetchError.message }, { status: 500 })
+      }
+
+      if (!fetched) {
+        return NextResponse.json({ error: 'Assignment not found after update' }, { status: 404 })
+      }
+
+      updated = fetched
     }
 
     return NextResponse.json({ assignment: updated }, { status: 200 })

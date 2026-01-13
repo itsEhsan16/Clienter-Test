@@ -32,6 +32,7 @@ interface Expense {
   }
   project_team_members?: {
     profiles: {
+      id: string
       full_name: string
       email: string
     }
@@ -52,11 +53,18 @@ interface AssignedProject {
   id: string
   name: string
   project_team_member_id: string
+  team_member_id?: string
   allocated_budget: number
   total_paid: number
   clients: {
     name: string
   }
+}
+
+interface TeamMemberOption {
+  profileId: string // profiles.id / payee
+  name: string
+  email: string
 }
 
 function ExpensesPageContent() {
@@ -66,21 +74,22 @@ function ExpensesPageContent() {
 
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [assignedProjects, setAssignedProjects] = useState<AssignedProject[]>([])
+  const [teamMembers, setTeamMembers] = useState<TeamMemberOption[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null)
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
 
   const [newExpense, setNewExpense] = useState({
     title: '',
-    description: '',
     expense_type: 'team' as 'team' | 'other',
     amount: '',
-    total_amount: '',
     date: new Date().toISOString().split('T')[0],
-    category: '',
     project_id: preselectedProjectId || '',
     project_team_member_id: '',
+    team_member_profile_id: '',
   })
 
   const [newPayment, setNewPayment] = useState({
@@ -90,16 +99,26 @@ function ExpensesPageContent() {
     notes: '',
   })
 
+  const [editExpense, setEditExpense] = useState({
+    title: '',
+    expense_type: 'team' as 'team' | 'other',
+    amount: '',
+    date: '',
+    project_id: '',
+    team_member_profile_id: '',
+  })
+
   useEffect(() => {
     if (user && organization) {
       fetchData()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, organization])
 
   const fetchData = async () => {
     try {
       setLoading(true)
-      await Promise.all([fetchAssignedProjects(), fetchExpenses()])
+      await Promise.all([fetchAssignedProjects(), fetchExpenses(), fetchTeamMembers()])
     } catch (error: any) {
       console.error('Error fetching data:', error)
       toast.error('Failed to fetch data')
@@ -108,13 +127,69 @@ function ExpensesPageContent() {
     }
   }
 
+  const fetchTeamMembers = async () => {
+    try {
+      // Fetch all team members in the organization
+      const { data, error } = await supabase
+        .from('organization_members')
+        .select(
+          `
+          user_id,
+          profiles (id, full_name, email)
+        `
+        )
+        .eq('organization_id', organization?.organizationId)
+        .eq('status', 'active')
+        .neq('role', 'owner') // Don't show owner in team member list
+
+      if (error) throw error
+
+      const formatted: TeamMemberOption[] = (data || []).map((member: any) => ({
+        profileId: member.user_id,
+        name: member.profiles?.full_name || 'Unnamed member',
+        email: member.profiles?.email || '',
+      }))
+
+      setTeamMembers(formatted)
+    } catch (error: any) {
+      console.error('Error fetching team members:', error)
+      toast.error('Failed to load team members')
+    }
+  }
+
   const fetchAssignedProjects = async () => {
     try {
+      // If the current user is an owner or admin, show all projects for the organization
+      if (organization?.role === 'owner' || organization?.role === 'admin') {
+        const { data, error } = await supabase
+          .from('projects')
+          .select(`id, name, clients (name)`)
+          .eq('organization_id', organization.organizationId)
+          .order('name')
+
+        if (error) throw error
+
+        const formatted = (data || []).map((proj: any) => ({
+          id: proj.id,
+          name: proj.name,
+          // Owners aren't tied to a project_team_member row, so leave empty
+          project_team_member_id: '',
+          allocated_budget: 0,
+          total_paid: 0,
+          clients: proj.clients,
+        }))
+
+        setAssignedProjects(formatted)
+        return
+      }
+
+      // Fallback for team members: fetch only projects the user is assigned to
       const { data, error } = await supabase
         .from('project_team_members')
         .select(
           `
           project_team_member_id:id,
+          team_member_id,
           allocated_budget,
           total_paid,
           projects (
@@ -132,6 +207,7 @@ function ExpensesPageContent() {
         id: item.projects.id,
         name: item.projects.name,
         project_team_member_id: item.project_team_member_id,
+        team_member_id: item.team_member_id,
         allocated_budget: item.allocated_budget,
         total_paid: item.total_paid,
         clients: item.projects.clients,
@@ -156,7 +232,7 @@ function ExpensesPageContent() {
             clients (name)
           ),
           project_team_members (
-            profiles (full_name, email)
+            profiles (id, full_name, email)
           ),
           team_payment_records (*)
         `
@@ -181,8 +257,7 @@ function ExpensesPageContent() {
     }
 
     const amount = parseFloat(newExpense.amount)
-    const totalAmount =
-      newExpense.expense_type === 'team' ? parseFloat(newExpense.total_amount) : amount
+    const totalAmount = amount
 
     if (isNaN(amount) || amount <= 0) {
       toast.error('Please enter a valid amount')
@@ -190,38 +265,79 @@ function ExpensesPageContent() {
     }
 
     if (newExpense.expense_type === 'team') {
-      if (!newExpense.project_id || !newExpense.project_team_member_id) {
+      if (!newExpense.project_id) {
         toast.error('Please select a project')
         return
       }
-      if (isNaN(totalAmount) || totalAmount <= 0) {
-        toast.error('Please enter a valid total cost')
-        return
-      }
-      if (amount > totalAmount) {
-        toast.error('Initial payment cannot exceed total cost')
+      if (!newExpense.team_member_profile_id) {
+        toast.error('Please select a team member')
         return
       }
     }
 
     try {
+      let projectTeamMemberId = null
+
+      // If team expense, ensure the team member is assigned to the project
+      if (newExpense.expense_type === 'team') {
+        // Check if team member is already assigned to this project
+        const { data: existingAssignment } = await supabase
+          .from('project_team_members')
+          .select('id')
+          .eq('project_id', newExpense.project_id)
+          .eq('team_member_id', newExpense.team_member_profile_id)
+          .maybeSingle()
+
+        if (existingAssignment) {
+          // Use existing assignment
+          projectTeamMemberId = existingAssignment.id
+        } else {
+          // Auto-assign team member to project
+          const { data: newAssignment, error: assignError } = await supabase
+            .from('project_team_members')
+            .insert({
+              project_id: newExpense.project_id,
+              team_member_id: newExpense.team_member_profile_id,
+              status: 'active',
+            })
+            .select('id')
+            .single()
+
+          if (assignError) throw assignError
+          projectTeamMemberId = newAssignment.id
+          toast.success('Team member auto-assigned to project')
+        }
+      }
+
       // Create expense
       const expenseData: any = {
         title: newExpense.title,
-        description: newExpense.description || null,
+        description:
+          newExpense.expense_type === 'team'
+            ? `Payment to team member for ${
+                assignedProjects.find((p) => p.id === newExpense.project_id)?.name || 'project'
+              }`
+            : null,
         amount: amount,
         expense_type: newExpense.expense_type,
         date: newExpense.date,
-        category: newExpense.category || null,
+        user_id: user?.id,
         organization_id: organization?.organizationId,
       }
 
       if (newExpense.expense_type === 'team') {
         expenseData.project_id = newExpense.project_id
-        expenseData.project_team_member_id = newExpense.project_team_member_id
+        expenseData.project_team_member_id = projectTeamMemberId
+        expenseData.team_member_id = newExpense.team_member_profile_id
         expenseData.total_amount = totalAmount
-        expenseData.payment_status =
-          amount >= totalAmount ? 'completed' : amount > 0 ? 'partial' : 'pending'
+        expenseData.paid_amount = amount
+      } else {
+        // For other expenses, ensure these are null
+        expenseData.project_id = null
+        expenseData.project_team_member_id = null
+        expenseData.team_member_id = null
+        expenseData.total_amount = null
+        expenseData.paid_amount = null
       }
 
       const { data: expense, error: expenseError } = await supabase
@@ -236,11 +352,11 @@ function ExpensesPageContent() {
       if (newExpense.expense_type === 'team' && amount > 0) {
         const { error: paymentError } = await supabase.from('team_payment_records').insert({
           expense_id: expense.id,
-          team_member_id: user?.id,
+          created_by: user?.id,
           amount: amount,
           payment_date: newExpense.date,
-          payment_type: 'advance',
-          notes: 'Initial payment',
+          payment_type: 'regular',
+          notes: 'Full payment recorded by owner',
         })
 
         if (paymentError) throw paymentError
@@ -250,19 +366,154 @@ function ExpensesPageContent() {
       setShowAddModal(false)
       setNewExpense({
         title: '',
-        description: '',
         expense_type: 'team',
         amount: '',
-        total_amount: '',
         date: new Date().toISOString().split('T')[0],
-        category: '',
         project_id: '',
         project_team_member_id: '',
+        team_member_profile_id: '',
       })
       fetchData()
     } catch (error: any) {
       console.error('Error adding expense:', error)
       toast.error(error.message || 'Failed to add expense')
+    }
+  }
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    try {
+      const { error } = await supabase.from('expenses').delete().eq('id', expenseId)
+
+      if (error) throw error
+
+      toast.success('Expense deleted successfully')
+      fetchData()
+    } catch (error: any) {
+      console.error('Error deleting expense:', error)
+      toast.error(error.message || 'Failed to delete expense')
+    }
+  }
+
+  const openEditModal = (expense: Expense) => {
+    setEditingExpense(expense)
+    setEditExpense({
+      title: expense.title,
+      expense_type: expense.expense_type,
+      amount: expense.amount.toString(),
+      date: expense.date,
+      project_id: expense.project_id || '',
+      team_member_profile_id: expense.team_member_id || '',
+    })
+    setShowEditModal(true)
+  }
+
+  const handleUpdateExpense = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!editingExpense) return
+
+    if (!editExpense.title) {
+      toast.error('Please enter expense title')
+      return
+    }
+
+    const amount = parseFloat(editExpense.amount)
+
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount')
+      return
+    }
+
+    if (editExpense.expense_type === 'team') {
+      if (!editExpense.project_id) {
+        toast.error('Please select a project')
+        return
+      }
+      if (!editExpense.team_member_profile_id) {
+        toast.error('Please select a team member')
+        return
+      }
+    }
+
+    try {
+      let projectTeamMemberId = editingExpense.project_team_member_id
+
+      // If team expense and team member changed, update project assignment
+      if (
+        editExpense.expense_type === 'team' &&
+        editExpense.team_member_profile_id !== editingExpense.team_member_id
+      ) {
+        // Check if team member is already assigned to this project
+        const { data: existingAssignment } = await supabase
+          .from('project_team_members')
+          .select('id')
+          .eq('project_id', editExpense.project_id)
+          .eq('team_member_id', editExpense.team_member_profile_id)
+          .maybeSingle()
+
+        if (existingAssignment) {
+          projectTeamMemberId = existingAssignment.id
+        } else {
+          // Auto-assign team member to project
+          const { data: newAssignment, error: assignError } = await supabase
+            .from('project_team_members')
+            .insert({
+              project_id: editExpense.project_id,
+              team_member_id: editExpense.team_member_profile_id,
+              status: 'active',
+            })
+            .select('id')
+            .single()
+
+          if (assignError) throw assignError
+          projectTeamMemberId = newAssignment.id
+          toast.success('Team member auto-assigned to project')
+        }
+      }
+
+      // Update expense
+      const expenseData: any = {
+        title: editExpense.title,
+        amount: amount,
+        date: editExpense.date,
+      }
+
+      if (editExpense.expense_type === 'team') {
+        expenseData.project_id = editExpense.project_id
+        expenseData.project_team_member_id = projectTeamMemberId
+        expenseData.team_member_id = editExpense.team_member_profile_id
+        expenseData.description = `Payment to team member for ${
+          assignedProjects.find((p) => p.id === editExpense.project_id)?.name || 'project'
+        }`
+      } else {
+        expenseData.project_id = null
+        expenseData.project_team_member_id = null
+        expenseData.team_member_id = null
+        expenseData.description = null
+      }
+
+      const { error: updateError } = await supabase
+        .from('expenses')
+        .update(expenseData)
+        .eq('id', editingExpense.id)
+
+      if (updateError) throw updateError
+
+      toast.success('Expense updated successfully')
+      setShowEditModal(false)
+      setEditingExpense(null)
+      setEditExpense({
+        title: '',
+        expense_type: 'team',
+        amount: '',
+        date: '',
+        project_id: '',
+        team_member_profile_id: '',
+      })
+      fetchData()
+    } catch (error: any) {
+      console.error('Error updating expense:', error)
+      toast.error(error.message || 'Failed to update expense')
     }
   }
 
@@ -286,7 +537,7 @@ function ExpensesPageContent() {
     try {
       const { error } = await supabase.from('team_payment_records').insert({
         expense_id: selectedExpense.id,
-        team_member_id: user?.id,
+        created_by: user?.id,
         amount,
         payment_date: newPayment.payment_date,
         payment_type: newPayment.payment_type,
@@ -446,13 +697,10 @@ function ExpensesPageContent() {
                   Type
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Project/Team
+                  Project
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Payment Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Date
@@ -465,19 +713,28 @@ function ExpensesPageContent() {
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredExpenses.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                     No expenses found. Click &quot;Add Expense&quot; to get started.
                   </td>
                 </tr>
               ) : (
                 filteredExpenses.map((expense) => (
                   <tr key={expense.id} className="hover:bg-gray-50">
+                    {/* Expense Column */}
                     <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{expense.title}</div>
-                      {expense.description && (
-                        <div className="text-sm text-gray-500">{expense.description}</div>
+                      {expense.expense_type === 'team' && expense.project_team_members ? (
+                        <div>
+                          <div className="text-sm font-bold text-gray-900">
+                            {expense.project_team_members.profiles.full_name}
+                          </div>
+                          <div className="text-sm text-gray-600">{expense.title}</div>
+                        </div>
+                      ) : (
+                        <div className="text-sm font-medium text-gray-900">{expense.title}</div>
                       )}
                     </td>
+
+                    {/* Type Column */}
                     <td className="px-6 py-4">
                       <span
                         className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
@@ -489,84 +746,56 @@ function ExpensesPageContent() {
                         {expense.expense_type === 'team' ? 'Team Payment' : 'Other'}
                       </span>
                     </td>
+
+                    {/* Project Column */}
                     <td className="px-6 py-4">
-                      {expense.expense_type === 'team' && expense.projects ? (
+                      {expense.projects ? (
                         <div className="text-sm">
                           <div className="font-medium text-gray-900">{expense.projects.name}</div>
-                          <div className="text-gray-500">{expense.projects.clients.name}</div>
-                          {expense.project_team_members && (
-                            <div className="text-gray-500">
-                              {expense.project_team_members.profiles.full_name}
-                            </div>
-                          )}
+                          <div className="text-xs text-gray-500">
+                            {expense.projects.clients.name}
+                          </div>
                         </div>
                       ) : (
                         <span className="text-sm text-gray-500">-</span>
                       )}
                     </td>
+
+                    {/* Amount Column */}
                     <td className="px-6 py-4">
-                      {expense.expense_type === 'team' ? (
-                        <div className="text-sm">
-                          <div className="font-medium text-gray-900">
-                            {formatCurrency(expense.paid_amount || 0)} /{' '}
-                            {formatCurrency(expense.total_amount || 0)}
-                          </div>
-                          <div className="text-gray-500">
-                            Remaining:{' '}
-                            {formatCurrency(
-                              (expense.total_amount || 0) - (expense.paid_amount || 0)
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-sm font-medium text-gray-900">
-                          {formatCurrency(expense.amount)}
-                        </div>
-                      )}
+                      <div className="text-sm font-medium text-gray-900">
+                        {formatCurrency(expense.amount)}
+                      </div>
                     </td>
-                    <td className="px-6 py-4">
-                      {expense.expense_type === 'team' ? (
-                        <span
-                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getPaymentStatusColor(
-                            expense.payment_status
-                          )}`}
-                        >
-                          {getPaymentStatusLabel(expense.payment_status)}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-gray-500">-</span>
-                      )}
-                    </td>
+
+                    {/* Date Column */}
                     <td className="px-6 py-4 text-sm text-gray-500">
                       {format(new Date(expense.date), 'MMM dd, yyyy')}
                     </td>
+
+                    {/* Actions Column */}
                     <td className="px-6 py-4">
-                      {expense.expense_type === 'team' &&
-                        expense.payment_status !== 'completed' && (
-                          <button
-                            onClick={() => {
-                              setSelectedExpense(expense)
-                              setShowPaymentModal(true)
-                            }}
-                            className="text-blue-600 hover:text-blue-900 text-sm font-medium"
-                          >
-                            Add Payment
-                          </button>
-                        )}
-                      {expense.expense_type === 'team' &&
-                        expense.team_payment_records &&
-                        expense.team_payment_records.length > 0 && (
-                          <button
-                            onClick={() => {
-                              setSelectedExpense(expense)
-                              setShowPaymentModal(true)
-                            }}
-                            className="ml-3 text-gray-600 hover:text-gray-900"
-                            title="View payments"
-                          >
-                            <Eye size={16} />
-                          </button>
-                        )}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openEditModal(expense)}
+                          className="text-blue-600 hover:text-blue-900 text-sm font-medium"
+                          title="Edit expense"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            // TODO: Implement delete functionality
+                            if (confirm('Are you sure you want to delete this expense?')) {
+                              handleDeleteExpense(expense.id)
+                            }
+                          }}
+                          className="text-red-600 hover:text-red-900 text-sm font-medium"
+                          title="Delete expense"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -648,11 +877,11 @@ function ExpensesPageContent() {
                       value={newExpense.project_id}
                       onChange={(e) => {
                         const projectId = e.target.value
-                        const project = assignedProjects.find((p) => p.id === projectId)
                         setNewExpense({
                           ...newExpense,
                           project_id: projectId,
-                          project_team_member_id: project?.project_team_member_id || '',
+                          project_team_member_id: '',
+                          team_member_profile_id: '',
                         })
                       }}
                       className="input w-full"
@@ -673,88 +902,63 @@ function ExpensesPageContent() {
                   </div>
                 )}
 
-                {/* Amount fields */}
-                {newExpense.expense_type === 'team' ? (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="label">Total Cost *</label>
-                      <input
-                        type="number"
-                        value={newExpense.total_amount}
-                        onChange={(e) =>
-                          setNewExpense({ ...newExpense, total_amount: e.target.value })
-                        }
-                        className="input w-full"
-                        placeholder="0.00"
-                        step="0.01"
-                        min="0"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="label">Initial Payment *</label>
-                      <input
-                        type="number"
-                        value={newExpense.amount}
-                        onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
-                        className="input w-full"
-                        placeholder="0.00"
-                        step="0.01"
-                        min="0"
-                        required
-                      />
-                    </div>
-                  </div>
-                ) : (
+                {/* Team member selection */}
+                {newExpense.expense_type === 'team' && (
                   <div>
-                    <label className="label">Amount *</label>
-                    <input
-                      type="number"
-                      value={newExpense.amount}
-                      onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
+                    <label className="label">Team Member *</label>
+                    <select
+                      value={newExpense.team_member_profile_id}
+                      onChange={(e) => {
+                        const profileId = e.target.value
+                        setNewExpense({
+                          ...newExpense,
+                          team_member_profile_id: profileId,
+                        })
+                      }}
                       className="input w-full"
-                      placeholder="0.00"
-                      step="0.01"
-                      min="0"
                       required
-                    />
+                      disabled={!teamMembers.length}
+                    >
+                      <option value="">Select a team member</option>
+                      {teamMembers.map((member) => (
+                        <option key={member.profileId} value={member.profileId}>
+                          {member.name} {member.email ? `(${member.email})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {!teamMembers.length && (
+                      <p className="text-sm text-red-600 mt-1">
+                        No active team members in your organization.
+                      </p>
+                    )}
                   </div>
                 )}
 
-                {/* Description */}
+                {/* Amount */}
                 <div>
-                  <label className="label">Description</label>
-                  <textarea
-                    value={newExpense.description}
-                    onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                  <label className="label">Amount *</label>
+                  <input
+                    type="number"
+                    value={newExpense.amount}
+                    onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
                     className="input w-full"
-                    rows={3}
-                    placeholder="Additional details..."
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    required
                   />
                 </div>
 
-                {/* Date and Category */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">Date *</label>
-                    <input
-                      type="date"
-                      value={newExpense.date}
-                      onChange={(e) => setNewExpense({ ...newExpense, date: e.target.value })}
-                      className="input w-full"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Category</label>
-                    <input
-                      type="text"
-                      value={newExpense.category}
-                      onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
-                      className="input w-full"
-                      placeholder="e.g., Development, Marketing"
-                    />
-                  </div>
+                {/* Date */}
+                <div>
+                  <label className="label">Date *</label>
+                  <input
+                    type="date"
+                    value={newExpense.date}
+                    onChange={(e) => setNewExpense({ ...newExpense, date: e.target.value })}
+                    className="input w-full"
+                    required
+                  />
                 </div>
 
                 {/* Form Actions */}
@@ -768,6 +972,181 @@ function ExpensesPageContent() {
                   </button>
                   <button type="submit" className="btn-primary">
                     Add Expense
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Expense Modal */}
+      {showEditModal && editingExpense && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Edit Expense</h2>
+                <button
+                  onClick={() => {
+                    setShowEditModal(false)
+                    setEditingExpense(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateExpense} className="space-y-4">
+                {/* Expense Type Selection */}
+                <div>
+                  <label className="label">Expense Type *</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setEditExpense({ ...editExpense, expense_type: 'team' })}
+                      className={`p-4 rounded-lg border-2 transition-colors ${
+                        editExpense.expense_type === 'team'
+                          ? 'border-blue-600 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <Users className="mx-auto mb-2" size={24} />
+                      <div className="font-medium">Team Payment</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Payment to team member for project
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditExpense({ ...editExpense, expense_type: 'other' })}
+                      className={`p-4 rounded-lg border-2 transition-colors ${
+                        editExpense.expense_type === 'other'
+                          ? 'border-blue-600 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <Package className="mx-auto mb-2" size={24} />
+                      <div className="font-medium">Other Expense</div>
+                      <div className="text-xs text-gray-500 mt-1">General business expense</div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="label">Title *</label>
+                  <input
+                    type="text"
+                    value={editExpense.title}
+                    onChange={(e) => setEditExpense({ ...editExpense, title: e.target.value })}
+                    className="input w-full"
+                    placeholder="e.g., January payment, Office supplies"
+                    required
+                  />
+                </div>
+
+                {/* Project Selection - Only for team payments */}
+                {editExpense.expense_type === 'team' && (
+                  <div>
+                    <label className="label">Project *</label>
+                    <select
+                      value={editExpense.project_id}
+                      onChange={(e) => {
+                        const projectId = e.target.value
+                        setEditExpense({
+                          ...editExpense,
+                          project_id: projectId,
+                          team_member_profile_id: '',
+                        })
+                      }}
+                      className="input w-full"
+                      required
+                    >
+                      <option value="">Select a project</option>
+                      {assignedProjects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name} - {project.clients.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Team member selection */}
+                {editExpense.expense_type === 'team' && (
+                  <div>
+                    <label className="label">Team Member *</label>
+                    <select
+                      value={editExpense.team_member_profile_id}
+                      onChange={(e) => {
+                        const profileId = e.target.value
+                        setEditExpense({
+                          ...editExpense,
+                          team_member_profile_id: profileId,
+                        })
+                      }}
+                      className="input w-full"
+                      required
+                      disabled={!teamMembers.length}
+                    >
+                      <option value="">Select a team member</option>
+                      {teamMembers.map((member) => (
+                        <option key={member.profileId} value={member.profileId}>
+                          {member.name} {member.email ? `(${member.email})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {!teamMembers.length && (
+                      <p className="text-sm text-red-600 mt-1">
+                        No active team members in your organization.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Amount */}
+                <div>
+                  <label className="label">Amount *</label>
+                  <input
+                    type="number"
+                    value={editExpense.amount}
+                    onChange={(e) => setEditExpense({ ...editExpense, amount: e.target.value })}
+                    className="input w-full"
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    required
+                  />
+                </div>
+
+                {/* Date */}
+                <div>
+                  <label className="label">Date *</label>
+                  <input
+                    type="date"
+                    value={editExpense.date}
+                    onChange={(e) => setEditExpense({ ...editExpense, date: e.target.value })}
+                    className="input w-full"
+                    required
+                  />
+                </div>
+
+                {/* Form Actions */}
+                <div className="flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditModal(false)
+                      setEditingExpense(null)
+                    }}
+                    className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn-primary">
+                    Update Expense
                   </button>
                 </div>
               </form>

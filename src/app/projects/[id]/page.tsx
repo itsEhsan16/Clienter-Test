@@ -96,7 +96,7 @@ export default function ProjectDetailsPage() {
       setLoading(true)
 
       // Fetch project via server API (avoids RLS recursion)
-      const res = await fetch(`/api/projects/${projectId}`)
+      const res = await fetch(`/api/projects/${projectId}`, { cache: 'no-store' })
       if (!res.ok) {
         let errMsg = 'Failed to fetch project'
         try {
@@ -112,7 +112,7 @@ export default function ProjectDetailsPage() {
       setTeamMembers(projectData.project_team_members || [])
 
       // Fetch payments via server API
-      const paymentsRes = await fetch(`/api/projects/${projectId}/payments`)
+      const paymentsRes = await fetch(`/api/projects/${projectId}/payments`, { cache: 'no-store' })
       if (!paymentsRes.ok) {
         let errMsg = 'Failed to fetch payments'
         try {
@@ -246,6 +246,11 @@ export default function ProjectDetailsPage() {
       daysLeftLabel,
     }
   }, [MS_IN_DAY, project])
+
+  const totalPayments = useMemo(
+    () => payments.reduce((sum, payment) => sum + (payment.amount || 0), 0),
+    [payments]
+  )
 
   const openEditModal = () => {
     if (!project) return
@@ -544,9 +549,7 @@ export default function ProjectDetailsPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600 mb-1">Total Paid</p>
-              <p className="text-2xl font-bold text-green-600">
-                {formatCurrency(project.total_paid)}
-              </p>
+              <p className="text-2xl font-bold text-green-600">{formatCurrency(totalPayments)}</p>
             </div>
             <div className="p-3 bg-green-100 rounded-lg">
               <Rupee className="text-green-600" size={22} />
@@ -559,7 +562,7 @@ export default function ProjectDetailsPage() {
             <div>
               <p className="text-sm text-gray-600 mb-1">Remaining</p>
               <p className="text-2xl font-bold text-gray-900">
-                {formatCurrency(project.budget - project.total_paid)}
+                {formatCurrency((project.budget || 0) - totalPayments)}
               </p>
             </div>
             <div className="p-3 bg-blue-100 rounded-lg">
@@ -620,13 +623,13 @@ export default function ProjectDetailsPage() {
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm text-gray-600">Budget Progress</span>
                 <span className="text-sm font-semibold text-gray-900">
-                  {calculateProgress(project.total_paid, project.budget).toFixed(1)}%
+                  {calculateProgress(totalPayments, project.budget).toFixed(1)}%
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-3">
                 <div
                   className="bg-blue-600 h-3 rounded-full transition-all"
-                  style={{ width: `${calculateProgress(project.total_paid, project.budget)}%` }}
+                  style={{ width: `${calculateProgress(totalPayments, project.budget)}%` }}
                 />
               </div>
             </div>
@@ -737,8 +740,7 @@ export default function ProjectDetailsPage() {
 
         {/* Right Column */}
         <div className="space-y-6">
-
-           {/* Deadline - Moved from Stats Grid */}
+          {/* Deadline - Moved from Stats Grid */}
           <div className="card relative overflow-hidden">
             <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-amber-50 via-white to-rose-50" />
             <div className="relative">
@@ -791,7 +793,6 @@ export default function ProjectDetailsPage() {
             </div>
           </div>
 
-
           {/* Recent Payments */}
           <div className="card">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Recent Payments</h2>
@@ -816,8 +817,6 @@ export default function ProjectDetailsPage() {
               </div>
             )}
           </div>
-
-         
 
           {/* Quick Actions */}
           <div className="card">
