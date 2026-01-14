@@ -95,7 +95,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     const body = await request.json()
-    const { amount, payment_date, payment_type = 'regular', notes, team_member_id } = body
+    const { amount, payment_date, payment_type = 'regular', notes } = body
 
     // Validate required fields
     if (!amount || amount <= 0) {
@@ -114,7 +114,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
         payment_date: payment_date || new Date().toISOString().split('T')[0],
         payment_type,
         notes,
-        team_member_id: team_member_id || null,
         created_by: session.user.id,
       })
       .select(

@@ -15,6 +15,7 @@ import { formatRelativeTime, formatTimeAgo } from '@/lib/date-utils'
 import { ArrowLeft, Edit, Trash2, Plus, Phone, Calendar } from 'lucide-react'
 import Rupee from '@/components/Rupee'
 import Link from 'next/link'
+import { toast } from 'react-hot-toast'
 
 function formatPhoneForWhatsApp(phone?: string | null) {
   if (!phone) return null
@@ -37,6 +38,7 @@ export default function ClientDetailPage() {
   const [projects, setProjects] = useState<any[]>([])
   const [totalBudget, setTotalBudget] = useState(0)
   const [totalPaidFromProjects, setTotalPaidFromProjects] = useState(0)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // remove per-client payment UI state (payments moved to projects)
 
@@ -73,16 +75,7 @@ export default function ClientDetailPage() {
 
         if (!projectsError && projectsData) {
           setProjects(projectsData)
-          const budgetSum = projectsData.reduce(
-            (s: number, p: any) => s + (Number(p.budget) || 0),
-            0
-          )
-          const paidSum = projectsData.reduce(
-            (s: number, p: any) => s + (Number(p.total_paid) || 0),
-            0
-          )
-          setTotalBudget(budgetSum)
-          setTotalPaidFromProjects(paidSum)
+          recomputeTotals(projectsData)
         }
       } else {
         router.push('/clients')
@@ -103,6 +96,38 @@ export default function ClientDetailPage() {
 
     fetchData()
   }, [user, clientId, router])
+
+  const recomputeTotals = (list: any[]) => {
+    const budgetSum = list.reduce((s: number, p: any) => s + (Number(p.budget) || 0), 0)
+    const paidSum = list.reduce((s: number, p: any) => s + (Number(p.total_paid) || 0), 0)
+    setTotalBudget(budgetSum)
+    setTotalPaidFromProjects(paidSum)
+  }
+
+  const handleDeleteProject = async (projectId: string, projectName: string) => {
+    if (!supabase) return
+    const confirmed = window.confirm(
+      `Delete project "${projectName}"? This cannot be undone and removes related records.`
+    )
+    if (!confirmed) return
+
+    setDeletingId(projectId)
+    const { error } = await supabase.from('projects').delete().eq('id', projectId)
+    setDeletingId(null)
+
+    if (error) {
+      console.error('Error deleting project:', error)
+      toast.error(error.message || 'Failed to delete project')
+      return
+    }
+
+    toast.success('Project deleted')
+    setProjects((prev) => {
+      const next = prev.filter((p) => p.id !== projectId)
+      recomputeTotals(next)
+      return next
+    })
+  }
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -310,30 +335,58 @@ export default function ClientDetailPage() {
           </div>
 
           {projects && projects.length > 0 ? (
-            <ul className="space-y-2 mb-4">
+            <div className="space-y-3">
               {projects.map((p) => (
-                <li key={p.id} className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium">{p.name}</div>
-                    <div className="text-xs text-gray-500">{p.status}</div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="text-sm font-semibold">
-                      {formatCurrency(p.total_paid || 0, profile?.currency || 'INR')}
+                <div
+                  key={p.id}
+                  className="rounded-xl border border-gray-200 bg-white p-4 hover:shadow-md transition cursor-pointer"
+                  onClick={() => router.push(`/projects/${p.id}`)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3">
+                        <h4 className="text-lg font-semibold text-gray-900">{p.name}</h4>
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold ${getStatusColor(
+                            p.status as any
+                          )}`}
+                        >
+                          {getStatusLabel(p.status as any)}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-sm text-gray-600 flex flex-wrap gap-4">
+                        <span>
+                          Budget: {formatCurrency(p.budget || 0, profile?.currency || 'INR')}
+                        </span>
+                        <span className="text-green-700 font-medium">
+                          Paid: {formatCurrency(p.total_paid || 0, profile?.currency || 'INR')}
+                        </span>
+                        <span className="text-orange-700 font-medium">
+                          Balance:{' '}
+                          {formatCurrency(
+                            (Number(p.budget) || 0) - (Number(p.total_paid) || 0),
+                            profile?.currency || 'INR'
+                          )}
+                        </span>
+                        <span className="text-gray-500">Added {formatTimeAgo(p.created_at)}</span>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {formatCurrency(p.budget || 0, profile?.currency || 'INR')}
-                    </div>
-                    <Link
-                      href={`/projects/${p.id}`}
-                      className="text-primary-600 hover:text-primary-700"
+
+                    <button
+                      className="text-red-600 hover:text-red-700 p-2 rounded-lg hover:bg-red-50"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteProject(p.id, p.name)
+                      }}
+                      disabled={deletingId === p.id}
+                      aria-label={`Delete ${p.name}`}
                     >
-                      View
-                    </Link>
+                      <Trash2 className="w-5 h-5" />
+                    </button>
                   </div>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           ) : (
             <p className="text-gray-500 mb-4">No projects for this client yet.</p>
           )}

@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'react-hot-toast'
-import { ArrowLeft, Edit, Users, Calendar, TrendingUp, Plus, X } from 'lucide-react'
+import { ArrowLeft, Edit, Users, Calendar, TrendingUp, Plus, X, Package } from 'lucide-react'
 import Rupee from '@/components/Rupee'
 import { formatCurrency } from '@/lib/utils'
 
@@ -53,7 +53,7 @@ interface Payment {
 }
 
 export default function ProjectDetailsPage() {
-  const { user } = useAuth()
+  const { user, organization } = useAuth()
   const router = useRouter()
   const params = useParams()
   const projectId = params.id as string
@@ -61,6 +61,10 @@ export default function ProjectDetailsPage() {
   const [project, setProject] = useState<Project | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
+  const [showPaymentForm, setShowPaymentForm] = useState(false)
+  const [newPaymentAmount, setNewPaymentAmount] = useState('')
+  const [newPaymentNotes, setNewPaymentNotes] = useState('')
+  const [addingPayment, setAddingPayment] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showEditModal, setShowEditModal] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -90,6 +94,29 @@ export default function ProjectDetailsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteAssignmentId, setDeleteAssignmentId] = useState<string | null>(null)
   const [deleteMemberName, setDeleteMemberName] = useState('')
+
+  // Team expense modal
+  const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [expenseForm, setExpenseForm] = useState({
+    title: '',
+    amount: '',
+    date: new Date().toISOString().split('T')[0],
+    team_member_id: '',
+    team_member_name: '',
+  })
+  const [addingExpense, setAddingExpense] = useState(false)
+
+  const mapPayment = useCallback(
+    (p: any): Payment => ({
+      id: p.id,
+      amount: p.amount,
+      payment_date: p.payment_date,
+      payment_type: p.payment_type,
+      notes: p.notes,
+      profiles: p.profiles || p.creator || { full_name: 'Unknown' },
+    }),
+    []
+  )
 
   const fetchProjectDetails = useCallback(async () => {
     try {
@@ -123,23 +150,14 @@ export default function ProjectDetailsPage() {
       }
       const { payments: paymentsData } = await paymentsRes.json()
 
-      setPayments(
-        (paymentsData || []).map((p: any) => ({
-          id: p.id,
-          amount: p.amount,
-          payment_date: p.payment_date,
-          payment_type: p.payment_type,
-          notes: p.notes,
-          profiles: p.creator || { full_name: 'Unknown' },
-        }))
-      )
+      setPayments((paymentsData || []).map(mapPayment))
     } catch (error: any) {
       console.error('Error fetching project details:', error)
       toast.error('Failed to fetch project details')
     } finally {
       setLoading(false)
     }
-  }, [projectId])
+  }, [projectId, mapPayment])
 
   useEffect(() => {
     if (user && projectId) {
@@ -427,6 +445,164 @@ export default function ProjectDetailsPage() {
     }
   }
 
+  const handleAddPayment = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    const amountValue = parseFloat(newPaymentAmount)
+    if (Number.isNaN(amountValue) || amountValue <= 0) {
+      toast.error('Please enter a valid amount')
+      return
+    }
+
+    try {
+      setAddingPayment(true)
+      const res = await fetch(`/api/projects/${projectId}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amountValue,
+          notes: newPaymentNotes || null,
+        }),
+      })
+
+      if (!res.ok) {
+        let errMsg = 'Failed to add payment'
+        try {
+          const errBody = await res.json()
+          errMsg = errBody?.error || errMsg
+        } catch (e) {
+          try {
+            const text = await res.text()
+            errMsg = text || errMsg
+          } catch (e2) {}
+        }
+        throw new Error(errMsg)
+      }
+
+      const { payment } = await res.json()
+
+      setPayments((prev) => [mapPayment(payment), ...prev])
+      setProject((prev) =>
+        prev
+          ? {
+              ...prev,
+              total_paid: (prev.total_paid || 0) + (payment?.amount || 0),
+            }
+          : prev
+      )
+
+      setShowPaymentForm(false)
+      setNewPaymentAmount('')
+      setNewPaymentNotes('')
+      toast.success('Payment added successfully!')
+    } catch (error: any) {
+      console.error('Error adding payment:', error)
+      toast.error(error.message || 'Failed to add payment')
+    } finally {
+      setAddingPayment(false)
+    }
+  }
+
+  const handleAddExpense = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!expenseForm.title) {
+      toast.error('Please enter expense title')
+      return
+    }
+
+    const amount = parseFloat(expenseForm.amount)
+    if (Number.isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount')
+      return
+    }
+
+    if (!expenseForm.team_member_id) {
+      toast.error('Team member is required')
+      return
+    }
+
+    try {
+      setAddingExpense(true)
+
+      // Find the project_team_member_id for this team member in this project
+      const { data: assignment } = await supabase
+        .from('project_team_members')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('team_member_id', expenseForm.team_member_id)
+        .maybeSingle()
+
+      let projectTeamMemberId = assignment?.id
+
+      if (!projectTeamMemberId) {
+        // Auto-assign if not already assigned
+        const { data: newAssignment, error: assignError } = await supabase
+          .from('project_team_members')
+          .insert({
+            project_id: projectId,
+            team_member_id: expenseForm.team_member_id,
+            status: 'active',
+          })
+          .select('id')
+          .single()
+
+        if (assignError) throw assignError
+        projectTeamMemberId = newAssignment.id
+      }
+
+      // Create expense via API
+      const res = await fetch('/api/expenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: expenseForm.title,
+          description: `Payment to ${expenseForm.team_member_name} for ${project?.name}`,
+          amount,
+          expense_type: 'team',
+          date: expenseForm.date,
+          project_id: projectId,
+          project_team_member_id: projectTeamMemberId,
+          team_member_id: expenseForm.team_member_id,
+          total_amount: amount,
+          paid_amount: amount,
+          organization_id: organization?.organizationId,
+        }),
+      })
+
+      if (!res.ok) {
+        let errMsg = 'Failed to create expense'
+        try {
+          const errBody = await res.json()
+          errMsg = errBody?.error || errMsg
+        } catch (e) {
+          try {
+            const text = await res.text()
+            errMsg = text || errMsg
+          } catch (e2) {}
+        }
+        throw new Error(errMsg)
+      }
+
+      toast.success('Team payment added successfully!')
+      setShowExpenseModal(false)
+      setExpenseForm({
+        title: '',
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        team_member_id: '',
+        team_member_name: '',
+      })
+      // Refresh project details to update total_paid
+      fetchProjectDetails()
+    } catch (error: any) {
+      console.error('Error adding expense:', error)
+      toast.error(error.message || 'Failed to add team payment')
+    } finally {
+      setAddingExpense(false)
+    }
+  }
+
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!project) return
@@ -671,6 +847,22 @@ export default function ProjectDetailsPage() {
                           <Edit size={16} />
                         </button>
                         <button
+                          onClick={() => {
+                            setExpenseForm({
+                              title: '',
+                              amount: '',
+                              date: new Date().toISOString().split('T')[0],
+                              team_member_id: member.team_member_id,
+                              team_member_name: member.profiles.full_name,
+                            })
+                            setShowExpenseModal(true)
+                          }}
+                          className="btn-secondary px-3 py-1 text-sm"
+                          title="Add payment for this member"
+                        >
+                          Add Payment
+                        </button>
+                        <button
                           onClick={() =>
                             confirmRemoveTeamMember(member.id, member.profiles.full_name)
                           }
@@ -793,9 +985,12 @@ export default function ProjectDetailsPage() {
             </div>
           </div>
 
-          {/* Recent Payments */}
+          {/* Payments */}
           <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Recent Payments</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Payments</h2>
+            </div>
+
             {payments.length === 0 ? (
               <p className="text-gray-600 text-center py-8 text-sm">No payments recorded yet</p>
             ) : (
@@ -810,25 +1005,67 @@ export default function ProjectDetailsPage() {
                         {format(new Date(payment.payment_date), 'MMM dd')}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600">{payment.profiles.full_name}</p>
+
                     {payment.notes && <p className="text-xs text-gray-500 mt-1">{payment.notes}</p>}
                   </div>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Quick Actions */}
-          <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
-            <div className="space-y-2">
-              <button
-                onClick={() => router.push(`/expenses?project=${projectId}`)}
-                className="w-full btn-primary justify-center"
-              >
-                <Plus size={16} />
-                Add Payment
-              </button>
+            <div className="pt-4 mt-4 border-t">
+              {showPaymentForm ? (
+                <form onSubmit={handleAddPayment} className="space-y-3">
+                  <div>
+                    <label className="label">Amount</label>
+                    <input
+                      type="number"
+                      value={newPaymentAmount}
+                      onChange={(e) => setNewPaymentAmount(e.target.value)}
+                      className="input"
+                      placeholder="Enter amount"
+                      min="0"
+                      step="0.01"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">Details</label>
+                    <textarea
+                      value={newPaymentNotes}
+                      onChange={(e) => setNewPaymentNotes(e.target.value)}
+                      className="input min-h-[80px] resize-y"
+                      placeholder="Add a short note (optional)"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3 justify-end">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        setShowPaymentForm(false)
+                        setNewPaymentAmount('')
+                        setNewPaymentNotes('')
+                      }}
+                      disabled={addingPayment}
+                    >
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn-primary" disabled={addingPayment}>
+                      {addingPayment ? 'Adding...' : 'Add Payment'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setShowPaymentForm(true)}
+                  className="w-full btn-primary justify-center"
+                >
+                  <Plus size={16} />
+                  Add Payment
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1131,6 +1368,130 @@ export default function ProjectDetailsPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Team Expense Modal */}
+      {showExpenseModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <form onSubmit={handleAddExpense}>
+              {/* Modal Header */}
+              <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-lg">
+                <h2 className="text-xl font-bold text-gray-900">Add Team Payment</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExpenseModal(false)
+                    setExpenseForm({
+                      title: '',
+                      amount: '',
+                      date: new Date().toISOString().split('T')[0],
+                      team_member_id: '',
+                      team_member_name: '',
+                    })
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="px-6 py-6 space-y-4">
+                {/* Team Member Display */}
+                <div>
+                  <label className="label">Team Member</label>
+                  <div className="px-4 py-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center gap-2">
+                      <Users className="text-blue-600" size={18} />
+                      <span className="font-medium text-gray-900">
+                        {expenseForm.team_member_name}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Project Display */}
+                <div>
+                  <label className="label">Project</label>
+                  <div className="px-4 py-3 bg-purple-50 rounded-lg border border-purple-200">
+                    <span className="font-medium text-gray-900">{project?.name}</span>
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label className="label">
+                    Title <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={expenseForm.title}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, title: e.target.value })}
+                    className="input"
+                    placeholder="e.g., January payment, Milestone 1"
+                    required
+                  />
+                </div>
+
+                {/* Amount */}
+                <div>
+                  <label className="label">
+                    Amount (₹) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={expenseForm.amount}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                    className="input"
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    required
+                  />
+                </div>
+
+                {/* Date */}
+                <div>
+                  <label className="label">
+                    Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={expenseForm.date}
+                    onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                    className="input"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3 rounded-b-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExpenseModal(false)
+                    setExpenseForm({
+                      title: '',
+                      amount: '',
+                      date: new Date().toISOString().split('T')[0],
+                      team_member_id: '',
+                      team_member_name: '',
+                    })
+                  }}
+                  className="btn-secondary"
+                  disabled={addingExpense}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" disabled={addingExpense}>
+                  {addingExpense ? 'Adding...' : 'Add Payment'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

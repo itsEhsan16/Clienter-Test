@@ -1,63 +1,75 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { Plus, Search, Download, Users as UsersIcon, X, Phone, FolderKanban } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { TopBar } from '@/components/TopBar'
 import { ClientsListSkeleton } from '@/components/SkeletonLoaders'
-import {
-  exportToCSV,
-  exportToJSON,
-  getClientStatusColor,
-  getClientStatusLabel,
-  formatCurrency,
-} from '@/lib/utils'
-import { Plus, Search, Download, Users as UsersIcon, X, Phone } from 'lucide-react'
-import Link from 'next/link'
-import {
-  DndContext,
-  DragEndEvent,
-  DragOverEvent,
-  DragOverlay,
-  DragStartEvent,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
-import { KanbanColumn } from '@/components/KanbanColumn'
-import { KanbanCard } from '@/components/KanbanCard'
+import { exportToCSV, exportToJSON } from '@/lib/utils'
+import { formatTimeAgo } from '@/lib/date-utils'
+import type { ProjectStatus } from '@/types/database'
 
-// Type for project items in Kanban (project-based model)
-type ProjectKanbanItem = {
+type ProjectStatusCounts = Record<ProjectStatus, number>
+
+type ClientListItem = {
   id: string
   name: string
-  status: 'new' | 'ongoing' | 'completed'
-  order: number
-  phone?: string | null
-  client_id?: string | null
-  client_name?: string | null
-  _project?: any
+  phone: string | null
+  created_at: string
+  projectsCount: number
+  statusCounts: ProjectStatusCounts
+  latestProject?: {
+    id: string
+    name: string
+    status: ProjectStatus
+    created_at: string
+  }
 }
 
-const STATUSES = ['new', 'ongoing', 'completed'] as const
+type ClientProjectStats = {
+  total: number
+  statusCounts: ProjectStatusCounts
+  latest?: {
+    id: string
+    name: string
+    status: ProjectStatus
+    created_at: string
+  }
+}
+
+const createEmptyStatusCounts = (): ProjectStatusCounts => ({
+  new: 0,
+  ongoing: 0,
+  completed: 0,
+})
+
+const statusBadgeClass = (status: ProjectStatus) => {
+  switch (status) {
+    case 'ongoing':
+      return 'bg-green-100 text-green-800'
+    case 'completed':
+      return 'bg-blue-100 text-blue-800'
+    default:
+      return 'bg-purple-100 text-purple-800'
+  }
+}
 
 export default function ClientsPage() {
-  const { user, profile, loading: authLoading, supabase } = useAuth()
-  // Internally we now display projects grouped by status (project-based model)
-  const [clients, setClients] = useState<ProjectKanbanItem[]>([])
-  const [filteredClients, setFilteredClients] = useState<ProjectKanbanItem[]>([])
+  const { user, organization, loading: authLoading, supabase } = useAuth()
+
+  const [clients, setClients] = useState<ClientListItem[]>([])
+  const [filteredClients, setFilteredClients] = useState<ClientListItem[]>([])
+  const [projectSummary, setProjectSummary] = useState<{
+    totalProjects: number
+    statusCounts: ProjectStatusCounts
+  }>({
+    totalProjects: 0,
+    statusCounts: createEmptyStatusCounts(),
+  })
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeId, setActiveId] = useState<string | null>(null)
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  )
 
   useEffect(() => {
     if (!user || authLoading || !supabase) return
@@ -67,15 +79,9 @@ export default function ClientsPage() {
       setError(null)
 
       try {
-        // Verify session first
         const {
           data: { session },
         } = await supabase.auth.getSession()
-        console.log('[Clients] Session check:', {
-          hasSession: !!session,
-          userId: session?.user?.id,
-          accessToken: session?.access_token ? 'present' : 'missing',
-        })
 
         if (!session || !session.access_token) {
           setError('No active session. Please log in again.')
@@ -83,208 +89,170 @@ export default function ClientsPage() {
           return
         }
 
-        // Add timeout protection
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Fetch clients timed out after 10 seconds')), 10000)
-        )
+        let orgId = organization?.organizationId || null
 
-        // Fetch projects and map them to a lightweight item shape for the Kanban
-        const fetchPromise = supabase
-          .from('projects')
-          .select('id, name, status, "order", client:clients (name, phone, id)')
-          .eq('created_by', user.id)
-          .order('status', { ascending: true })
-          .order('order', { ascending: true })
+        if (!orgId) {
+          const { data: membershipData, error: membershipError } = await supabase
+            .from('organization_members')
+            .select('organization_id')
+            .eq('user_id', user.id)
+            .eq('status', 'active')
+            .limit(1)
 
-        const { data, error } = await Promise.race([fetchPromise, timeoutPromise])
+          if (membershipError) {
+            throw membershipError
+          }
 
-        console.log('[Clients] Projects query result:', {
-          error: error,
-          count: data?.length || 0,
+          if (membershipData && membershipData.length > 0) {
+            orgId = membershipData[0].organization_id
+          }
+        }
+
+        if (!orgId) {
+          setError('No active organization found. Join or create one to see clients.')
+          setIsLoading(false)
+          return
+        }
+
+        const [clientsRes, projectsRes] = await Promise.all([
+          supabase
+            .from('clients')
+            .select('id, name, phone, created_at')
+            .eq('organization_id', orgId)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('projects')
+            .select('id, client_id, status, name, created_at')
+            .eq('organization_id', orgId),
+        ])
+
+        if (clientsRes.error) {
+          throw clientsRes.error
+        }
+
+        const projectRows = projectsRes.error ? [] : projectsRes.data || []
+
+        const projectTotals: ProjectStatusCounts = createEmptyStatusCounts()
+        const projectMap = new Map<string, ClientProjectStats>()
+
+        projectRows.forEach((project: any) => {
+          const status = (project.status as ProjectStatus) || 'new'
+          projectTotals[status] = (projectTotals[status] || 0) + 1
+
+          if (!project.client_id) return
+
+          const existing = projectMap.get(project.client_id) || {
+            total: 0,
+            statusCounts: createEmptyStatusCounts(),
+          }
+
+          existing.total += 1
+          existing.statusCounts[status] = (existing.statusCounts[status] || 0) + 1
+
+          if (
+            !existing.latest ||
+            new Date(project.created_at) > new Date(existing.latest.created_at)
+          ) {
+            existing.latest = {
+              id: project.id,
+              name: project.name,
+              status,
+              created_at: project.created_at,
+            }
+          }
+
+          projectMap.set(project.client_id, existing)
         })
 
-        if (error) {
-          setError('Failed to load projects: ' + error.message)
-          console.error('[Clients] Projects fetch error:', error)
-        }
-        if (data) {
-          const mapped = (data || []).map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            status: p.status,
-            order: p.order || 0,
-            phone: p.client && p.client[0] ? p.client[0].phone : null,
-            client_id: p.client && p.client[0] ? p.client[0].id : null,
-            client_name: p.client && p.client[0] ? p.client[0].name : null,
-            // attach original project payload for reference
-            _project: p,
-          }))
-          setClients(mapped)
-          setFilteredClients(mapped)
-        }
+        const mappedClients: ClientListItem[] = (clientsRes.data || []).map((client: any) => {
+          const stats = projectMap.get(client.id) || {
+            total: 0,
+            statusCounts: createEmptyStatusCounts(),
+          }
+
+          return {
+            id: client.id,
+            name: client.name,
+            phone: client.phone || null,
+            created_at: client.created_at,
+            projectsCount: stats.total,
+            statusCounts: { ...stats.statusCounts },
+            latestProject: stats.latest,
+          }
+        })
+
+        setProjectSummary({
+          totalProjects: projectRows.length,
+          statusCounts: { ...projectTotals },
+        })
+
+        setClients(mappedClients)
+        setFilteredClients(mappedClients)
       } catch (err: any) {
+        console.error('[Clients] Error fetching clients list:', err)
         setError('Failed to load clients: ' + (err?.message || 'Unknown error'))
-        console.error('[Clients] Error:', err)
       } finally {
         setIsLoading(false)
       }
     }
 
     fetchClients()
-  }, [user, authLoading, supabase])
+  }, [user, authLoading, supabase, organization])
 
   useEffect(() => {
-    let filtered = clients
-
-    if (searchTerm) {
-      filtered = filtered.filter((client) =>
-        client.name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+    const value = searchTerm.toLowerCase().trim()
+    if (!value) {
+      setFilteredClients(clients)
+      return
     }
+
+    const filtered = clients.filter((client) => {
+      return (
+        client.name.toLowerCase().includes(value) ||
+        (client.phone ? client.phone.toLowerCase().includes(value) : false)
+      )
+    })
 
     setFilteredClients(filtered)
   }, [searchTerm, clients])
 
-  const clientsByStatus = useMemo(() => {
-    const grouped: Record<string, ProjectKanbanItem[]> = {
-      new: [],
-      ongoing: [],
-      completed: [],
-    }
-    filteredClients.forEach((client) => {
-      const s = client.status || 'new'
-      grouped[s].push(client)
-    })
-    return grouped
-  }, [filteredClients])
-
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string)
-  }
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event
-    setActiveId(null)
-
-    if (!over) return
-
-    const activeId = active.id as string
-    const overId = over.id as string
-
-    const activeClient = clients.find((c) => c.id === activeId)
-    if (!activeClient) return
-
-    // If dropped on a column (status change)
-    if (STATUSES.includes(overId as any)) {
-      const newStatus = overId as ProjectKanbanItem['status']
-      if (newStatus === activeClient.status) return
-
-      // Update local state
-      setClients((prev) => prev.map((c) => (c.id === activeId ? { ...c, status: newStatus } : c)))
-
-      // Update database
-      const { error } = await supabase
-        .from('projects')
-        .update({ status: newStatus })
-        .eq('id', activeId)
-
-      if (error) {
-        console.error('Error updating project status:', error)
-        // Revert on error
-        setClients((prev) =>
-          prev.map((c) => (c.id === activeId ? { ...c, status: activeClient.status } : c))
-        )
-      }
-    } else {
-      // Reordering within the same column
-      const overClient = clients.find((c) => c.id === overId)
-      if (!overClient || activeClient.status !== overClient.status) return
-
-      const statusClients = clients.filter((c) => c.status === activeClient.status)
-      const activeIndex = statusClients.findIndex((c) => c.id === activeId)
-      const overIndex = statusClients.findIndex((c) => c.id === overId)
-
-      if (activeIndex === -1 || overIndex === -1) return
-
-      // Reorder the clients in this status
-      const reorderedClients = arrayMove(statusClients, activeIndex, overIndex)
-
-      // Update orders
-      const updatedClients = reorderedClients.map((client, index) => ({
-        ...client,
-        order: index,
-      }))
-
-      // Update local state
-      setClients((prev) => {
-        const newClients = prev.filter((c) => c.status !== activeClient.status)
-        return [...newClients, ...updatedClients]
-      })
-
-      // Update database orders
-      const updates = updatedClients.map((client) => ({
-        id: client.id,
-        order: client.order,
-      }))
-
-      if (!user) return
-
-      for (const update of updates) {
-        const { error } = await supabase
-          .from('projects')
-          .update({ order: update.order })
-          .eq('id', update.id)
-
-        if (error) {
-          console.error('Error updating project order:', error)
-          // Revert on error - refetch projects
-          const { data } = await supabase
-            .from('projects')
-            .select('id, name, status, "order", client:clients (name, phone, id)')
-            .eq('created_by', user.id)
-            .order('status', { ascending: true })
-            .order('order', { ascending: true })
-          if (data) {
-            const mapped = (data || []).map((p: any) => ({
-              id: p.id,
-              name: p.name,
-              status: p.status,
-              order: p.order || 0,
-              phone: p.client && p.client[0] ? p.client[0].phone : null,
-              client_id: p.client && p.client[0] ? p.client[0].id : null,
-              client_name: p.client && p.client[0] ? p.client[0].name : null,
-              _project: p,
-            }))
-            setClients(mapped)
-          }
-          break
-        }
-      }
-    }
-  }
-
   const handleExportCSV = () => {
-    exportToCSV(filteredClients, `clients-${new Date().toISOString().split('T')[0]}`)
+    const rows = filteredClients.map((client) => ({
+      name: client.name,
+      phone: client.phone || '',
+      projects: client.projectsCount,
+      latest_project: client.latestProject?.name || '',
+      latest_project_status: client.latestProject?.status || '',
+      added_at: client.created_at,
+    }))
+
+    exportToCSV(rows, `clients-${new Date().toISOString().split('T')[0]}`)
   }
 
   const handleExportJSON = () => {
-    exportToJSON(filteredClients, `clients-${new Date().toISOString().split('T')[0]}`)
+    const rows = filteredClients.map((client) => ({
+      name: client.name,
+      phone: client.phone || '',
+      projects: client.projectsCount,
+      latest_project: client.latestProject?.name || '',
+      latest_project_status: client.latestProject?.status || '',
+      added_at: client.created_at,
+    }))
+
+    exportToJSON(rows, `clients-${new Date().toISOString().split('T')[0]}`)
   }
 
-  // Show skeleton while loading
   if (authLoading || isLoading) {
     return <ClientsListSkeleton />
   }
 
   if (!user) return null
 
-  const activeClient = activeId ? clients.find((c) => c.id === activeId) : null
-
   return (
     <div className="min-h-screen">
       <TopBar
         title="Clients"
-        description="Manage your client relationships"
+        description="View all clients and jump into their projects"
         actions={
           <Link href="/clients/new" className="btn-primary">
             <Plus className="w-4 h-4 mr-2" />
@@ -293,27 +261,44 @@ export default function ClientsPage() {
         }
       />
 
-      <div className="p-6 lg:p-8">
-        {/* Error Banner */}
+      <div className="p-6 lg:p-8 space-y-6">
         {error && (
-          <div className="mb-8 bg-red-50 border-l-4 border-red-500 rounded-xl p-6">
-            <h2 className="text-lg font-bold text-red-900 mb-2">⚠️ Error Loading Clients</h2>
-            <p className="text-red-700 mb-4">{error}</p>
-            <p className="text-gray-700">
-              Check your Supabase configuration, RLS policies, and database setup. See console for
-              details.
-            </p>
+          <div className="mb-4 bg-red-50 border-l-4 border-red-500 rounded-xl p-4">
+            <h2 className="text-sm font-semibold text-red-800">Unable to load clients</h2>
+            <p className="text-sm text-red-700 mt-1">{error}</p>
           </div>
         )}
 
-        {/* Filters and Search */}
-        <div className="card p-6 mb-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="card p-4">
+            <p className="text-sm text-gray-500">Total clients</p>
+            <p className="text-2xl font-bold text-gray-900">{clients.length}</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-sm text-gray-500">Total projects</p>
+            <p className="text-2xl font-bold text-gray-900">{projectSummary.totalProjects}</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-sm text-gray-500">Ongoing projects</p>
+            <p className="text-2xl font-bold text-green-700">
+              {projectSummary.statusCounts.ongoing}
+            </p>
+          </div>
+          <div className="card p-4">
+            <p className="text-sm text-gray-500">Completed projects</p>
+            <p className="text-2xl font-bold text-blue-700">
+              {projectSummary.statusCounts.completed}
+            </p>
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:w-96">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
                 type="text"
-                placeholder="Search clients..."
+                placeholder="Search by name or phone..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg"
@@ -321,106 +306,104 @@ export default function ClientsPage() {
               {searchTerm && (
                 <button
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
+
+            {filteredClients.length > 0 && (
+              <div className="flex gap-3">
+                <button onClick={handleExportCSV} className="btn-secondary text-sm">
+                  <Download className="w-4 h-4 mr-2" />
+                  Export CSV
+                </button>
+                <button onClick={handleExportJSON} className="btn-secondary text-sm">
+                  <Download className="w-4 h-4 mr-2" />
+                  Export JSON
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Export Options */}
-        {filteredClients.length > 0 && (
-          <div className="mb-6 flex justify-end space-x-3">
-            <button onClick={handleExportCSV} className="btn-secondary text-sm">
-              <Download className="w-4 h-4 mr-2" />
-              Export CSV
-            </button>
-            <button onClick={handleExportJSON} className="btn-secondary text-sm">
-              <Download className="w-4 h-4 mr-2" />
-              Export JSON
-            </button>
-          </div>
-        )}
-
-        {/* Kanban Board */}
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {STATUSES.map((status) => (
-              <KanbanColumn
-                key={status}
-                id={status}
-                title={getClientStatusLabel(status)}
-                clients={clientsByStatus[status]}
-                count={clientsByStatus[status].length}
-                currency={profile?.currency || 'INR'}
-              />
-            ))}
-          </div>
-
-          <DragOverlay>
-            {activeClient ? (
-              <KanbanCard client={activeClient} isDragging currency={profile?.currency || 'INR'} />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-
-        {/* Completed Projects Section */}
-        {clientsByStatus.completed.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Completed Projects</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {clientsByStatus.completed.map((item) => (
-                <Link
-                  key={item.id}
-                  href={`/projects/${item.id}`}
-                  className="card p-4 block hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-gray-900">{item.name}</h3>
-                    <span className={`px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700`}>
-                      {getClientStatusLabel(item.status || 'new')}
-                    </span>
-                  </div>
-                  {item.client_name && (
-                    <p className="text-sm text-gray-600 mb-2">
-                      <Phone className="w-4 h-4 inline mr-1" />
-                      {item.client_name}
-                    </p>
-                  )}
-
-                  {item._project && item._project.budget != null && (
-                    <p className="text-sm font-medium text-gray-900">
-                      Budget: {formatCurrency(item._project.budget, profile?.currency || 'INR')}
-                    </p>
-                  )}
+        <div className="card p-0 overflow-hidden">
+          {filteredClients.length === 0 ? (
+            <div className="p-12 text-center">
+              <UsersIcon className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+              <h3 className="text-lg font-bold text-gray-900 mb-2">
+                {clients.length === 0 ? 'No clients yet' : 'No clients match your search'}
+              </h3>
+              <p className="text-gray-600 mb-6">
+                {clients.length === 0
+                  ? 'Add your first client to get started'
+                  : 'Try a different name or phone number'}
+              </p>
+              {clients.length === 0 && (
+                <Link href="/clients/new" className="btn-primary">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Client
                 </Link>
+              )}
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {filteredClients.map((client) => (
+                <div
+                  key={client.id}
+                  className="p-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="text-lg font-semibold text-gray-900 truncate">{client.name}</p>
+                    <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
+                      <Phone className="w-4 h-4" />
+                      {client.phone || 'No phone added'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Added {formatTimeAgo(client.created_at)}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-gray-700">
+                    <div>
+                      <p className="text-xs text-gray-500">Projects</p>
+                      <p className="font-semibold">{client.projectsCount}</p>
+                    </div>
+
+                    {client.latestProject && (
+                      <div className="flex items-center gap-2 min-w-[180px]">
+                        <div>
+                          <p className="text-xs text-gray-500">Latest project</p>
+                          <p className="font-semibold truncate max-w-[200px]">
+                            {client.latestProject.name}
+                          </p>
+                        </div>
+                        <span
+                          className={`px-2 py-1 text-xs rounded-full whitespace-nowrap ${statusBadgeClass(
+                            client.latestProject.status
+                          )}`}
+                        >
+                          {client.latestProject.status}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Link href={`/projects/new?client=${client.id}`} className="btn-primary">
+                      <FolderKanban className="w-4 h-4 mr-2" />
+                      New Project
+                    </Link>
+                    <Link href={`/clients/${client.id}`} className="btn-secondary">
+                      View Details
+                    </Link>
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Empty State */}
-        {filteredClients.length === 0 && (
-          <div className="card p-12 text-center col-span-full">
-            <UsersIcon className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-            <h3 className="text-lg font-bold text-gray-900 mb-2">
-              {clients.length === 0 ? 'No clients yet' : 'No clients found'}
-            </h3>
-            <p className="text-gray-600 mb-6">
-              {clients.length === 0
-                ? 'Add your first client to get started'
-                : 'Try adjusting your search or filters'}
-            </p>
-            {clients.length === 0 && (
-              <Link href="/clients/new" className="btn-primary">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Your First Client
-              </Link>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )

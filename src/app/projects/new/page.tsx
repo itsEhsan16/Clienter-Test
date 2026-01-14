@@ -14,6 +14,7 @@ interface Client {
 
 interface TeamMember {
   id: string
+  user_id: string
   profiles: {
     full_name: string
     email: string
@@ -85,17 +86,24 @@ function NewProjectPageContent() {
     try {
       const { data, error } = await supabase
         .from('organization_members')
-        .select('id, profiles (full_name, email)')
+        .select('id, user_id, profiles (full_name, email)')
         .eq('organization_id', organization.organizationId)
         .order('created_at')
 
       if (error) throw error
-      setTeamMembers(
-        (data || []).map((tm: any) => ({
+      const normalized = (data || [])
+        .filter((tm: any) => !!tm?.user_id)
+        .map((tm: any) => ({
           id: tm.id,
+          user_id: tm.user_id,
           profiles: tm.profiles || { full_name: 'Unknown', email: '' },
         }))
-      )
+
+      if ((data || []).length > normalized.length) {
+        console.warn('Some organization members missing user_id; skipping them for assignment')
+      }
+
+      setTeamMembers(normalized)
     } catch (error: any) {
       console.error('Error fetching team members:', error)
       toast.error('Failed to fetch team members')
@@ -109,7 +117,7 @@ function NewProjectPageContent() {
     }
 
     const availableMembers = teamMembers.filter(
-      (tm) => !assignedMembers.some((am) => am.team_member_id === tm.id)
+      (tm) => !assignedMembers.some((am) => am.team_member_id === tm.user_id)
     )
 
     if (availableMembers.length === 0) {
@@ -121,7 +129,7 @@ function NewProjectPageContent() {
     setAssignedMembers([
       ...assignedMembers,
       {
-        team_member_id: firstAvailable.id,
+        team_member_id: firstAvailable.user_id,
         full_name: firstAvailable.profiles.full_name,
         email: firstAvailable.profiles.email,
         allocated_budget: 0,
@@ -136,7 +144,7 @@ function NewProjectPageContent() {
   const handleTeamMemberChange = (index: number, field: string, value: any) => {
     const updated = [...assignedMembers]
     if (field === 'team_member_id') {
-      const member = teamMembers.find((tm) => tm.id === value)
+      const member = teamMembers.find((tm) => tm.user_id === value)
       if (member) {
         updated[index] = {
           ...updated[index],
@@ -176,6 +184,11 @@ function NewProjectPageContent() {
       toast.error(
         `Total allocated budget (${totalAllocated}) cannot exceed project budget (${budget})`
       )
+      return
+    }
+
+    if (assignedMembers.some((m) => !m.team_member_id)) {
+      toast.error('One or more team members are missing a user account')
       return
     }
 
@@ -230,7 +243,7 @@ function NewProjectPageContent() {
   }
 
   const availableTeamMembers = teamMembers.filter(
-    (tm) => !assignedMembers.some((am) => am.team_member_id === tm.id)
+    (tm) => !assignedMembers.some((am) => am.team_member_id === tm.user_id)
   )
 
   // Show loading state while organization is being fetched
@@ -396,7 +409,7 @@ function NewProjectPageContent() {
                           {member.full_name} ({member.email})
                         </option>
                         {availableTeamMembers.map((tm) => (
-                          <option key={tm.id} value={tm.id}>
+                          <option key={tm.user_id} value={tm.user_id}>
                             {tm.profiles.full_name} ({tm.profiles.email})
                           </option>
                         ))}

@@ -72,6 +72,7 @@ function ExpensesPageContent() {
   const { user, organization } = useAuth()
   const searchParams = useSearchParams()
   const preselectedProjectId = searchParams?.get('project')
+  const preselectedMemberId = searchParams?.get('member')
 
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [assignedProjects, setAssignedProjects] = useState<AssignedProject[]>([])
@@ -90,7 +91,7 @@ function ExpensesPageContent() {
     date: new Date().toISOString().split('T')[0],
     project_id: preselectedProjectId || '',
     project_team_member_id: '',
-    team_member_profile_id: '',
+    team_member_profile_id: preselectedMemberId || '',
   })
 
   const [newPayment, setNewPayment] = useState({
@@ -109,12 +110,28 @@ function ExpensesPageContent() {
     team_member_profile_id: '',
   })
 
+  const [prefillHandled, setPrefillHandled] = useState(false)
+
   useEffect(() => {
     if (user && organization) {
       fetchData()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, organization])
+
+  useEffect(() => {
+    if (!prefillHandled && (preselectedProjectId || preselectedMemberId)) {
+      setShowAddModal(true)
+      setNewExpense((prev) => ({
+        ...prev,
+        expense_type: 'team',
+        project_id: preselectedProjectId || prev.project_id,
+        team_member_profile_id: preselectedMemberId || prev.team_member_profile_id,
+        title: prev.title,
+      }))
+      setPrefillHandled(true)
+    }
+  }, [preselectedProjectId, preselectedMemberId, prefillHandled])
 
   const fetchData = async () => {
     try {
@@ -341,13 +358,28 @@ function ExpensesPageContent() {
         expenseData.paid_amount = null
       }
 
-      const { data: expense, error: expenseError } = await supabase
-        .from('expenses')
-        .insert(expenseData)
-        .select()
-        .single()
+      // Use API to create expense (avoids enum casting issues)
+      const res = await fetch('/api/expenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(expenseData),
+      })
 
-      if (expenseError) throw expenseError
+      if (!res.ok) {
+        let errMsg = 'Failed to create expense'
+        try {
+          const errBody = await res.json()
+          errMsg = errBody?.error || errMsg
+        } catch (e) {
+          try {
+            const text = await res.text()
+            errMsg = text || errMsg
+          } catch (e2) {}
+        }
+        throw new Error(errMsg)
+      }
+
+      const { expense } = await res.json()
 
       // If team payment with initial amount, create payment record
       if (newExpense.expense_type === 'team' && amount > 0) {
@@ -360,7 +392,7 @@ function ExpensesPageContent() {
           notes: 'Full payment recorded by owner',
         })
 
-        if (paymentError) throw paymentError
+        if (paymentError) console.error('Payment record error:', paymentError)
       }
 
       toast.success('Expense added successfully')
@@ -486,11 +518,15 @@ function ExpensesPageContent() {
         expenseData.description = `Payment to team member for ${
           assignedProjects.find((p) => p.id === editExpense.project_id)?.name || 'project'
         }`
+        expenseData.total_amount = amount
+        expenseData.paid_amount = amount
       } else {
         expenseData.project_id = null
         expenseData.project_team_member_id = null
         expenseData.team_member_id = null
         expenseData.description = null
+        expenseData.total_amount = null
+        expenseData.paid_amount = null
       }
 
       const { error: updateError } = await supabase
