@@ -1,18 +1,19 @@
 import { NextResponse } from 'next/server'
 
 export async function POST(req: Request) {
+  const startTime = Date.now()
+
   try {
     const { access_token, refresh_token, expires_at, expires_in } = await req.json()
 
-    console.log('🔐 Setting auth cookies...', {
+    console.log('🔐 [Set Session] Received request', {
       hasAccessToken: !!access_token,
       hasRefreshToken: !!refresh_token,
-      expiresAt: expires_at,
-      expiresIn: expires_in,
+      timestamp: new Date().toISOString(),
     })
 
     if (!access_token || !refresh_token) {
-      console.error('❌ Missing tokens')
+      console.error('❌ [Set Session] Missing tokens')
       return NextResponse.json({ ok: false, error: 'Missing tokens' }, { status: 400 })
     }
 
@@ -29,10 +30,16 @@ export async function POST(req: Request) {
     res.cookies.set('sb-access-token', access_token, cookieOptions)
     res.cookies.set('sb-refresh-token', refresh_token, cookieOptions)
 
-    console.log('✅ Auth cookies set successfully')
+    const duration = Date.now() - startTime
+    console.log(`✅ [Set Session] Cookies set successfully (${duration}ms)`)
+
     return res
-  } catch (err) {
-    console.error('❌ Error setting cookies:', err)
-    return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 })
+  } catch (err: any) {
+    const duration = Date.now() - startTime
+    console.error(`❌ [Set Session] Error after ${duration}ms:`, err)
+    return NextResponse.json(
+      { ok: false, error: err?.message || 'Failed to set session' },
+      { status: 500 }
+    )
   }
 }

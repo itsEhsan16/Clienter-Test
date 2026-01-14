@@ -16,22 +16,29 @@ export default function TeamLoginPage() {
   // If a session already exists, route to the right dashboard
   useEffect(() => {
     const checkExistingSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
 
-      if (session) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('account_type')
-          .eq('id', session.user.id)
-          .maybeSingle()
+        if (session) {
+          // Quick check - just verify if they have membership
+          const { data: membership } = await supabase
+            .from('organization_members')
+            .select('role')
+            .eq('user_id', session.user.id)
+            .eq('status', 'active')
+            .maybeSingle()
 
-        if (profile?.account_type === 'owner') {
-          router.replace('/dashboard')
-        } else {
-          router.replace('/teammate/dashboard')
+          if (membership?.role === 'owner') {
+            router.replace('/dashboard')
+          } else if (membership) {
+            router.replace('/teammate/dashboard')
+          }
         }
+      } catch (error) {
+        console.error('[Team Login] Session check error:', error)
+        // Silently fail - user can try to login
       }
     }
 
@@ -40,13 +47,13 @@ export default function TeamLoginPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    console.log('[Team Login] ========== FORM SUBMITTED ==========')
+    console.log('[Team Login] Form submitted')
     setLoading(true)
     setErrorMessage('')
 
     try {
       const trimmedEmail = email.trim().toLowerCase()
-      console.log('[Team Login] Attempting sign-in for:', trimmedEmail)
+      console.log('[Team Login] Signing in:', trimmedEmail)
 
       // Sign in with Supabase
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -54,186 +61,88 @@ export default function TeamLoginPage() {
         password,
       })
 
-      console.log('[Team Login] Sign-in response:', {
-        hasSession: !!data?.session,
-        hasUser: !!data?.user,
-        error: error?.message,
-      })
-
       if (error) {
-        console.error('[Team Login] Supabase sign-in error:', error)
-        throw error
+        console.error('[Team Login] Sign-in error:', error)
+        throw new Error(error.message || 'Invalid email or password')
       }
 
       if (!data.session || !data.user) {
-        throw new Error('Login failed: no session returned from Supabase.')
+        throw new Error('Login failed. Please try again.')
       }
 
-      console.log('[Team Login] Fetching profile and membership...')
+      console.log('[Team Login] Signed in successfully')
 
-      if (data.session) {
-        // Get profile (may have legacy owner flag) and membership together
-        const [
-          { data: profile, error: profileError },
-          { data: memberships, error: membershipError },
-        ] = await Promise.all([
-          supabase
-            .from('profiles')
-            .select('account_type, full_name')
-            .eq('id', data.user.id)
-            .single(),
-          supabase
-            .from('organization_members')
-            .select('role, organization_id, display_name, status')
-            .eq('user_id', data.user.id)
-            .eq('status', 'active')
-            .order('created_at', { ascending: true })
-            .limit(1),
-        ])
+      // Fetch membership to verify team member access
+      const { data: membership, error: membershipError } = await supabase
+        .from('organization_members')
+        .select('role, display_name, status')
+        .eq('user_id', data.user.id)
+        .eq('status', 'active')
+        .maybeSingle()
 
-        console.log('[Team Login] Data fetched:', {
-          profile: profile?.account_type,
-          profileError: profileError?.message,
-          membershipCount: memberships?.length,
-          membershipError: membershipError?.message,
-        })
+      if (membershipError) {
+        console.error('[Team Login] Membership error:', membershipError)
+        await supabase.auth.signOut()
+        throw new Error('Unable to verify membership. Please contact support.')
+      }
 
-        if (profileError || !profile) {
-          console.error('[Team Login] Profile check failed')
-          await supabase.auth.signOut()
-          throw new Error('Unable to verify account type. Please contact support.')
-        }
+      if (!membership) {
+        await supabase.auth.signOut()
+        throw new Error('No active membership found. Please contact your organization owner.')
+      }
 
-        if (membershipError) {
-          console.error('[Team Login] Membership error:', membershipError)
-          await supabase.auth.signOut()
-          throw new Error('Database error: ' + membershipError.message)
-        }
+      // Check if user is trying to use team login as owner
+      if (membership.role === 'owner') {
+        await supabase.auth.signOut()
+        toast.error('Agency owners must use the main login page')
+        setTimeout(() => router.push('/login'), 1500)
+        return
+      }
 
-        if (!memberships || memberships.length === 0) {
-          console.error('[Team Login] No membership found')
-          await supabase.auth.signOut()
-          throw new Error(
-            'Your account is not associated with any active organization. Please contact your administrator to add you as a team member.'
-          )
-        }
+      console.log('[Team Login] Team member verified')
 
-        const membership = memberships[0]
-        console.log('[Team Login] Membership found:', {
-          role: membership.role,
-          status: membership.status,
-          displayName: membership.display_name,
-        })
+      // Set server-side session cookies with timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000) // 8 second timeout
 
-        if (membership.status !== 'active') {
-          console.error('[Team Login] Membership inactive')
-          await supabase.auth.signOut()
-          throw new Error('Your account is inactive. Please contact your organization owner.')
-        }
-
-        // Determine actual role: trust profile.account_type when explicitly set to team_member
-        let actualRole: string
-        if (profile.account_type === 'team_member') {
-          // Profile explicitly says team_member, trust it
-          actualRole = 'team_member'
-          console.log('[Team Login] Profile says team_member, using that role')
-
-          // Fix inconsistent membership role if needed
-          if (membership.role === 'owner') {
-            console.log(
-              '[Team Login] Fixing inconsistent membership role from owner to team member'
-            )
-            await supabase
-              .from('organization_members')
-              .update({ role: 'member' })
-              .eq('user_id', data.user.id)
-              .eq('organization_id', membership.organization_id)
-          }
-        } else {
-          // Use membership role
-          actualRole = membership.role === 'owner' ? 'owner' : 'team_member'
-          console.log('[Team Login] Using membership role:', actualRole)
-        }
-
-        if (actualRole === 'owner') {
-          console.warn('[Team Login] Owner attempted team login')
-          await supabase.auth.signOut()
-          toast.error('Agency owners must use the main login page')
-          setTimeout(() => router.push('/login'), 1500)
-          return
-        }
-
-        console.log('[Team Login] User is team member, proceeding...')
-
-        // Ensure profile is marked as team_member
-        if (profile.account_type !== 'team_member') {
-          console.log('[Team Login] Updating profile account_type to team_member')
-          await supabase
-            .from('profiles')
-            .update({ account_type: 'team_member' })
-            .eq('id', data.user.id)
-        }
-
-        console.log('[Team Login] Persisting session...')
-
-        // Persist both client and httpOnly cookies; fail fast if cookie API fails
-        try {
-          await supabase.auth.setSession({
+      try {
+        const cookieRes = await fetch('/api/auth/set-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             access_token: data.session.access_token,
             refresh_token: data.session.refresh_token,
-          })
+            expires_at: data.session.expires_at,
+            expires_in: data.session.expires_in ?? 3600,
+          }),
+          signal: controller.signal,
+        })
 
-          console.log('[Team Login] Client session set, verifying...')
+        clearTimeout(timeoutId)
 
-          // Verify session was set
-          const {
-            data: { session: verifySession },
-          } = await supabase.auth.getSession()
-          console.log('[Team Login] Session verification:', {
-            hasSession: !!verifySession,
-            userId: verifySession?.user?.id,
-          })
-
-          console.log('[Team Login] Calling cookie API...')
-
-          const cookieRes = await fetch('/api/auth/set-session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              access_token: data.session.access_token,
-              refresh_token: data.session.refresh_token,
-              expires_at: data.session.expires_at,
-              expires_in: data.session.expires_in ?? 3600,
-            }),
-          })
-
-          console.log('[Team Login] Cookie API response:', {
-            ok: cookieRes.ok,
-            status: cookieRes.status,
-          })
-
-          if (!cookieRes.ok) {
-            throw new Error('Failed to persist session cookies. Please try again.')
-          }
-
-          console.log('[Team Login] Session persisted successfully')
-        } catch (cookieError) {
-          console.error('[Team Login] Failed to persist session:', cookieError)
-          throw new Error('Login succeeded but session could not be saved. Please try again.')
+        if (!cookieRes.ok) {
+          throw new Error('Failed to set session')
         }
 
-        console.log('[Team Login] Redirecting to /teammate/dashboard...')
-        toast.success(`Welcome back, ${membership.display_name || 'Team Member'}!`)
-
-        // Use window.location for hard navigation to ensure middleware runs
-        window.location.href = '/teammate/dashboard'
+        console.log('[Team Login] Session set successfully')
+      } catch (fetchError: any) {
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Login is taking too long. Please check your connection and try again.')
+        }
+        throw new Error('Failed to establish session. Please try again.')
       }
+
+      // Success - redirect to team dashboard
+      toast.success(`Welcome back, ${membership.display_name || 'Team Member'}!`)
+      console.log('[Team Login] Redirecting to team dashboard')
+
+      // Hard redirect to ensure middleware processes the session
+      window.location.href = '/teammate/dashboard'
     } catch (error: any) {
-      console.error('Login error:', error)
-      const message = error?.message || 'Failed to login'
+      console.error('[Team Login] Error:', error)
+      const message = error?.message || 'Login failed. Please try again.'
       setErrorMessage(message)
       toast.error(message)
-    } finally {
       setLoading(false)
     }
   }
