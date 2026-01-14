@@ -110,13 +110,46 @@ export async function GET(req: NextRequest) {
       totalProjects = 0
     }
 
-    // Total earnings (from payments table)
-    const { data: payments } = await supabase
-      .from('payments')
-      .select('amount')
+    // Total earnings and payment history from expenses (owner's payments to this member)
+    const { data: expensePayments, error: paymentsError } = await supabase
+      .from('expenses')
+      .select(
+        `
+        id,
+        title,
+        amount,
+        total_amount,
+        paid_amount,
+        date,
+        project_id,
+        expense_type,
+        project:projects!project_id(
+          id,
+          name
+        )
+      `
+      )
       .eq('team_member_id', member.user_id)
+      .eq('organization_id', currentUserMember.organization_id)
+      .eq('expense_type', 'team')
+      .order('date', { ascending: false })
 
-    const totalEarnings = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) || 0
+    if (paymentsError) {
+      console.error('[Member Details API] Payments error:', paymentsError)
+    }
+
+    const payments = (expensePayments || []).map((row: any) => ({
+      id: row.id,
+      amount: Number(row.paid_amount ?? row.total_amount ?? row.amount ?? 0),
+      payment_type: 'expense',
+      payment_date: row.date,
+      expense_id: row.id,
+      title: row.title || 'Payment',
+      project_id: row.project?.id || row.project_id,
+      project_name: row.project?.name || 'Unknown project',
+    }))
+
+    const totalEarnings = payments.reduce((sum, payment) => sum + payment.amount, 0)
 
     const stats = {
       totalTasks: totalTasks || 0,
@@ -129,6 +162,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       member,
       stats,
+      payments,
     })
   } catch (error: any) {
     console.error('[Member Details API] Error:', error)

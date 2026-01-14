@@ -287,7 +287,9 @@ export async function getTeamMembers(userId: string) {
         )
       `
       )
+      // Only return active members (exclude soft-deleted/inactive records)
       .eq('organization_id', membership.organizationId)
+      .eq('status', 'active')
       .order('created_at', { ascending: true })
 
     if (error) {

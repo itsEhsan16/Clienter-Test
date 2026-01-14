@@ -88,7 +88,7 @@ export function KanbanColumn({
         </SortableContext>
       )}
 
-      {finalClients.length === 0 && (
+      {!children && finalClients.length === 0 && (
         <div className="text-center py-8 text-gray-400">No clients in {title.toLowerCase()}</div>
       )}
     </div>

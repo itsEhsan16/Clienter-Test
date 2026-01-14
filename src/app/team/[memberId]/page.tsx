@@ -34,12 +34,18 @@ export default function TeamMemberDetailPage() {
     totalProjects: 0,
     totalEarnings: 0,
   })
+  const [payments, setPayments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [teamLoginUrl, setTeamLoginUrl] = useState('')
   const [copiedField, setCopiedField] = useState<string | null>(null)
 
   const isOwnerOrAdmin = organization?.role === 'owner' || organization?.role === 'admin'
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setTeamLoginUrl(`${window.location.origin}/team-login`)
+    }
+
     if (user && memberId) {
       loadMemberDetails()
     }
@@ -55,6 +61,7 @@ export default function TeamMemberDetailPage() {
       const data = await response.json()
       setMember(data.member)
       setStats(data.stats)
+      setPayments(data.payments || [])
     } catch (error) {
       console.error('Error loading member details:', error)
       toast.error('Failed to load member details')
@@ -73,8 +80,6 @@ export default function TeamMemberDetailPage() {
       toast.error('Failed to copy')
     }
   }
-
-  const teamLoginUrl = `${window.location.origin}/team-login`
 
   if (loading) {
     return (
@@ -220,6 +225,45 @@ export default function TeamMemberDetailPage() {
                 </p>
               </div>
             )}
+
+            <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                  <Rupee className="w-5 h-5 mr-2" size={14} />
+                  Payment History
+                </h3>
+              </div>
+              {payments.length === 0 ? (
+                <p className="text-sm text-gray-600">No payments recorded for this member yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {payments.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="flex items-start justify-between rounded-lg border border-gray-100 bg-gray-50 px-4 py-3"
+                    >
+                      <div>
+                        <div className="text-base font-semibold text-gray-900">
+                          ₹{payment.amount.toLocaleString()}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {payment.project_name || 'Project payment'}
+                        </div>
+                        {payment.notes && (
+                          <div className="text-xs text-gray-500 mt-1">{payment.notes}</div>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500 text-right">
+                        {payment.payment_date
+                          ? new Date(payment.payment_date).toLocaleDateString()
+                          : '—'}
+                        <div className="text-xs text-gray-400">{payment.payment_type}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Column - Credentials */}
