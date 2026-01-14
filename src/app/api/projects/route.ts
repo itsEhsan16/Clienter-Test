@@ -95,22 +95,41 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // If there are projects, fetch team member counts for them via admin client
+    // If there are projects, fetch team member counts and real payment totals via admin client
     const projectIds = (projects || []).map((p: any) => p.id)
     let counts: Record<string, number> = {}
+    let paymentTotals: Record<string, number> = {}
+
     if (projectIds.length > 0) {
-      const { data: members, error: memErr } = await supabaseAdmin
-        .from('project_team_members')
-        .select('project_id')
-        .in('project_id', projectIds)
+      const [{ data: members, error: memErr }, { data: payments, error: payErr }] =
+        await Promise.all([
+          supabaseAdmin
+            .from('project_team_members')
+            .select('project_id')
+            .in('project_id', projectIds),
+          supabaseAdmin
+            .from('project_payments')
+            .select('project_id, amount')
+            .in('project_id', projectIds),
+        ])
 
       if (memErr) {
         console.error('Error fetching project team members (admin):', memErr)
         return NextResponse.json({ error: memErr.message }, { status: 500 })
       }
 
-      counts = (members || []).reduce((acc: any, m: any) => {
+      if (payErr) {
+        console.error('Error fetching project payments (admin):', payErr)
+        return NextResponse.json({ error: payErr.message }, { status: 500 })
+      }
+
+      counts = (members || []).reduce((acc: Record<string, number>, m: any) => {
         acc[m.project_id] = (acc[m.project_id] || 0) + 1
+        return acc
+      }, {})
+
+      paymentTotals = (payments || []).reduce((acc: Record<string, number>, p: any) => {
+        acc[p.project_id] = (acc[p.project_id] || 0) + (p.amount || 0)
         return acc
       }, {})
     }
@@ -118,6 +137,8 @@ export async function GET(request: Request) {
     const projectsWithCount = (projects || []).map((project: any) => ({
       ...project,
       team_member_count: counts[project.id] || 0,
+      // Use live payment sums to avoid stale total_paid values
+      total_paid: paymentTotals[project.id] ?? project.total_paid ?? 0,
     }))
 
     return NextResponse.json({ projects: projectsWithCount }, { status: 200 })

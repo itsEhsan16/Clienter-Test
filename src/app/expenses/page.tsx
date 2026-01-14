@@ -257,6 +257,7 @@ function ExpensesPageContent() {
         )
         .eq('organization_id', organization?.organizationId)
         .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
 
       if (error) throw error
       setExpenses(data || [])
