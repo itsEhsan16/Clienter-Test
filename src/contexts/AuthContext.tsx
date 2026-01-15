@@ -55,82 +55,87 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = supabaseClient
 
   // Simple profile fetch - no blocking, no complex retry
-  const fetchProfile = useCallback(async (userId: string) => {
-    if (!supabase || !userId) return
+  const fetchProfile = useCallback(
+    async (userId: string) => {
+      if (!supabase || !userId) return
 
-    setProfileLoading(true)
-    setProfileError(null)
+      setProfileLoading(true)
+      setProfileError(null)
 
-    try {
-      console.log('[Auth] Fetching profile for:', userId)
-      
-      // Simple query with reasonable timeout using Promise.race
-      const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) =>
-        setTimeout(() => resolve({ data: null, error: new Error('Profile query timed out') }), 10000)
-      )
+      try {
+        console.log('[Auth] Fetching profile for:', userId)
 
-      const queryPromise = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
+        // Simple query with reasonable timeout using Promise.race
+        const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) =>
+          setTimeout(
+            () => resolve({ data: null, error: new Error('Profile query timed out') }),
+            10000
+          )
+        )
 
-      const { data, error } = await Promise.race([queryPromise, timeoutPromise])
+        const queryPromise = supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
 
-      if (error) {
-        console.error('[Auth] Profile fetch error:', error.message)
-        setProfileError(error.message)
-        setProfile(null)
-      } else if (data) {
-        console.log('[Auth] Profile loaded:', data.full_name || data.email)
-        setProfile(data as Profile)
-        setProfileError(null)
-      } else {
-        console.log('[Auth] No profile found, creating one...')
-        // Try to create profile
-        const { data: { session } } = await supabase.auth.getSession()
-        const email = session?.user?.email
-        const name = session?.user?.user_metadata?.full_name || 
-                     session?.user?.user_metadata?.name || 
-                     email?.split('@')[0]
+        const { data, error } = await Promise.race([queryPromise, timeoutPromise])
 
-        if (email) {
-          const { data: newProfile, error: createError } = await supabase
-            .from('profiles')
-            .insert({
-              id: userId,
-              email,
-              full_name: name,
-              currency: 'INR',
-              timezone: 'UTC',
-              default_reminder_minutes: 15,
-              account_type: 'owner',
-            })
-            .select()
-            .single()
+        if (error) {
+          console.error('[Auth] Profile fetch error:', error.message)
+          setProfileError(error.message)
+          setProfile(null)
+        } else if (data) {
+          console.log('[Auth] Profile loaded:', data.full_name || data.email)
+          setProfile(data as Profile)
+          setProfileError(null)
+        } else {
+          console.log('[Auth] No profile found, creating one...')
+          // Try to create profile
+          const {
+            data: { session },
+          } = await supabase.auth.getSession()
+          const email = session?.user?.email
+          const name =
+            session?.user?.user_metadata?.full_name ||
+            session?.user?.user_metadata?.name ||
+            email?.split('@')[0]
 
-          if (createError) {
-            console.error('[Auth] Profile creation error:', createError.message)
-            setProfileError('Failed to create profile')
-          } else if (newProfile) {
-            console.log('[Auth] Profile created:', newProfile.full_name)
-            setProfile(newProfile as Profile)
-            setProfileError(null)
+          if (email) {
+            const { data: newProfile, error: createError } = await supabase
+              .from('profiles')
+              .insert({
+                id: userId,
+                email,
+                full_name: name,
+                currency: 'INR',
+                timezone: 'UTC',
+                default_reminder_minutes: 15,
+                account_type: 'owner',
+              })
+              .select()
+              .single()
+
+            if (createError) {
+              console.error('[Auth] Profile creation error:', createError.message)
+              setProfileError('Failed to create profile')
+            } else if (newProfile) {
+              console.log('[Auth] Profile created:', newProfile.full_name)
+              setProfile(newProfile as Profile)
+              setProfileError(null)
+            }
           }
         }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          console.error('[Auth] Profile fetch timed out')
+          setProfileError('Profile loading timed out. Click retry.')
+        } else {
+          console.error('[Auth] Profile fetch exception:', err)
+          setProfileError(err?.message || 'Failed to load profile')
+        }
+      } finally {
+        setProfileLoading(false)
       }
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        console.error('[Auth] Profile fetch timed out')
-        setProfileError('Profile loading timed out. Click retry.')
-      } else {
-        console.error('[Auth] Profile fetch exception:', err)
-        setProfileError(err?.message || 'Failed to load profile')
-      }
-    } finally {
-      setProfileLoading(false)
-    }
-  }, [supabase])
+    },
+    [supabase]
+  )
 
   // Simple organization fetch
   const fetchOrganization = useCallback(async (userId: string) => {
@@ -179,7 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await fetch('/api/auth/signout', { method: 'POST' })
     } catch (e) {}
-    
+
     userIdRef.current = null
     setUser(null)
     setProfile(null)
@@ -196,7 +201,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         // Get session - this is fast
-        const { data: { session }, error } = await supabase.auth.getSession()
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession()
 
         if (error) {
           console.error('[Auth] Session error:', error)
@@ -208,7 +216,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('[Auth] Session found:', session.user.email)
           userIdRef.current = session.user.id
           setUser(session.user)
-          
+
           // Mark auth as ready IMMEDIATELY - don't wait for profile
           setLoading(false)
 
@@ -228,32 +236,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initAuth()
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event: AuthChangeEvent, session: Session | null) => {
-        console.log('[Auth] Auth state changed:', event, session?.user?.email)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
+      console.log('[Auth] Auth state changed:', event, session?.user?.email)
 
-        if (event === 'SIGNED_IN' && session?.user) {
-          if (userIdRef.current !== session.user.id) {
-            userIdRef.current = session.user.id
-            setUser(session.user)
-            setLoading(false)
-            
-            // Background fetch
-            fetchProfile(session.user.id)
-            fetchOrganization(session.user.id)
-          }
-        } else if (event === 'SIGNED_OUT') {
-          userIdRef.current = null
-          setUser(null)
-          setProfile(null)
-          setOrganization(null)
-          setLoading(false)
-        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          // Just update user object if needed
+      if (event === 'SIGNED_IN' && session?.user) {
+        if (userIdRef.current !== session.user.id) {
+          userIdRef.current = session.user.id
           setUser(session.user)
+          setLoading(false)
+
+          // Background fetch
+          fetchProfile(session.user.id)
+          fetchOrganization(session.user.id)
         }
+      } else if (event === 'SIGNED_OUT') {
+        userIdRef.current = null
+        setUser(null)
+        setProfile(null)
+        setOrganization(null)
+        setLoading(false)
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Just update user object if needed
+        setUser(session.user)
       }
-    )
+    })
 
     return () => {
       subscription.unsubscribe()
@@ -274,7 +282,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshOrganization,
       retryProfileFetch,
     }),
-    [user, profile, organization, loading, profileLoading, profileError, supabase, signOut, refreshProfile, refreshOrganization, retryProfileFetch]
+    [
+      user,
+      profile,
+      organization,
+      loading,
+      profileLoading,
+      profileError,
+      supabase,
+      signOut,
+      refreshProfile,
+      refreshOrganization,
+      retryProfileFetch,
+    ]
   )
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>

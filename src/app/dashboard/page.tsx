@@ -109,26 +109,40 @@ export default function DashboardPage() {
         const orgId = organization?.organizationId
 
         // Parallel data fetching with timeout
-        const timeout = (ms: number) => new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Query timeout')), ms)
-        )
+        const timeout = (ms: number) =>
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Query timeout')), ms))
 
         const [clientsRes, projectsRes, meetingsRes, expensesRes] = await Promise.all([
           // Recent clients
-          orgId 
-            ? supabase.from('clients').select('*').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(5)
-            : supabase.from('clients').select('*').order('created_at', { ascending: false }).limit(5),
-          
+          orgId
+            ? supabase
+                .from('clients')
+                .select('*')
+                .eq('organization_id', orgId)
+                .order('created_at', { ascending: false })
+                .limit(5)
+            : supabase
+                .from('clients')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(5),
+
           // All projects for stats
           orgId
-            ? supabase.from('projects').select('budget, total_paid, status, created_at').eq('organization_id', orgId)
+            ? supabase
+                .from('projects')
+                .select('budget, total_paid, status, created_at')
+                .eq('organization_id', orgId)
             : supabase.from('projects').select('budget, total_paid, status, created_at'),
-          
+
           // Meetings count
           orgId
-            ? supabase.from('meetings').select('*', { count: 'exact', head: true }).eq('organization_id', orgId)
+            ? supabase
+                .from('meetings')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', orgId)
             : supabase.from('meetings').select('*', { count: 'exact', head: true }),
-          
+
           // Expenses
           orgId
             ? supabase.from('expenses').select('amount').eq('organization_id', orgId)
@@ -145,10 +159,19 @@ export default function DashboardPage() {
         const ongoingClients = projects.filter((p: any) => p.status === 'ongoing').length
         const completedClients = projects.filter((p: any) => p.status === 'completed').length
 
-        const totalRevenue = projects.reduce((sum: number, p: any) => sum + (Number(p.budget) || 0), 0)
-        const totalPaid = projects.reduce((sum: number, p: any) => sum + (Number(p.total_paid) || 0), 0)
+        const totalRevenue = projects.reduce(
+          (sum: number, p: any) => sum + (Number(p.budget) || 0),
+          0
+        )
+        const totalPaid = projects.reduce(
+          (sum: number, p: any) => sum + (Number(p.total_paid) || 0),
+          0
+        )
         const totalPending = totalRevenue - totalPaid
-        const totalExpenses = expensesData.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0)
+        const totalExpenses = expensesData.reduce(
+          (sum: number, e: any) => sum + (Number(e.amount) || 0),
+          0
+        )
         const profit = totalPaid - totalExpenses
 
         // Monthly calculations
@@ -160,8 +183,14 @@ export default function DashboardPage() {
           return d.getMonth() === currentMonth && d.getFullYear() === currentYear
         })
 
-        const monthlyRevenue = monthlyProjects.reduce((sum: number, p: any) => sum + (Number(p.budget) || 0), 0)
-        const monthlyPaid = monthlyProjects.reduce((sum: number, p: any) => sum + (Number(p.total_paid) || 0), 0)
+        const monthlyRevenue = monthlyProjects.reduce(
+          (sum: number, p: any) => sum + (Number(p.budget) || 0),
+          0
+        )
+        const monthlyPaid = monthlyProjects.reduce(
+          (sum: number, p: any) => sum + (Number(p.total_paid) || 0),
+          0
+        )
 
         // Calculate monthly trend data
         const monthlyDataCalc: MonthlyStats[] = []
@@ -176,8 +205,14 @@ export default function DashboardPage() {
             return d.getMonth() === targetMonth && d.getFullYear() === year
           })
 
-          const revenue = projectsInMonth.reduce((sum: number, p: any) => sum + (Number(p.budget) || 0), 0)
-          const paid = projectsInMonth.reduce((sum: number, p: any) => sum + (Number(p.total_paid) || 0), 0)
+          const revenue = projectsInMonth.reduce(
+            (sum: number, p: any) => sum + (Number(p.budget) || 0),
+            0
+          )
+          const paid = projectsInMonth.reduce(
+            (sum: number, p: any) => sum + (Number(p.total_paid) || 0),
+            0
+          )
 
           monthlyDataCalc.push({
             month: `${month} ${year}`,
