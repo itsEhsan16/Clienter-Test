@@ -16,7 +16,8 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
   const [reminders, setReminders] = useState<ReminderWithMeeting[]>([])
 
   useEffect(() => {
-    if (!isOpen || !user) return
+    // Don't fetch until we have user AND organization
+    if (!isOpen || !user || !organization?.organizationId) return
 
     const fetchReminders = async () => {
       const { data } = await supabase
@@ -30,7 +31,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
           )
         `
         )
-        .eq('organization_id', organization?.organizationId)
+        .eq('organization_id', organization.organizationId)
         .eq('is_dismissed', false)
         .order('remind_at', { ascending: true })
         .limit(20)
@@ -41,7 +42,7 @@ export function NotificationCenter({ isOpen, onClose }: NotificationCenterProps)
     }
 
     fetchReminders()
-  }, [isOpen, user])
+  }, [isOpen, user, organization?.organizationId, supabase])
 
   const handleDismiss = async (reminderId: string) => {
     await supabase

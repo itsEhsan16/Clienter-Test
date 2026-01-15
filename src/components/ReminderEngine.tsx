@@ -22,7 +22,8 @@ export function ReminderEngine() {
 
   // Fetch reminders on mount and set up polling
   useEffect(() => {
-    if (!user) return
+    // Don't fetch until we have user AND organization
+    if (!user || !organization?.organizationId) return
 
     const fetchReminders = async () => {
       const { data } = await supabase
@@ -36,7 +37,7 @@ export function ReminderEngine() {
           )
         `
         )
-        .eq('organization_id', organization?.organizationId)
+        .eq('organization_id', organization.organizationId)
         .eq('is_dismissed', false)
         .gte('remind_at', new Date(Date.now() - 5 * 60 * 1000).toISOString())
 
@@ -49,7 +50,7 @@ export function ReminderEngine() {
     const interval = setInterval(fetchReminders, 30000) // Refresh every 30 seconds
 
     return () => clearInterval(interval)
-  }, [user])
+  }, [user, organization?.organizationId, supabase, setReminders])
 
   // Check for active reminders every 10 seconds
   useEffect(() => {
