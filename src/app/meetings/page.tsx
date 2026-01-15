@@ -1,15 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { MeetingsListSkeleton } from '@/components/SkeletonLoaders'
+import { ProfileErrorBanner } from '@/components/ProfileErrorBanner'
 import { MeetingWithDetails, Client } from '@/types/database'
 import { formatRelativeTime, formatDateForInput } from '@/lib/date-utils'
 import { Plus, Calendar, ExternalLink, Video, X } from 'lucide-react'
 import Link from 'next/link'
 
 export default function MeetingsPage() {
-  const { user, profile, loading: authLoading, supabase, organization } = useAuth()
+  const {
+    user,
+    profile,
+    loading: authLoading,
+    profileLoading,
+    profileError,
+    supabase,
+    organization,
+  } = useAuth()
   const [meetings, setMeetings] = useState<MeetingWithDetails[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [showModal, setShowModal] = useState(false)
@@ -26,7 +35,23 @@ export default function MeetingsPage() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!user || authLoading || !supabase || !organization?.organizationId) return
+    // Wait for auth and profile loading to complete
+    if (authLoading || profileLoading) return
+
+    // If there's a profile error but user is logged in, show the page with error banner
+    // This allows users to see the retry option
+    if (!user || !supabase) return
+
+    // Only fetch data if we have organization context
+    if (!organization?.organizationId) {
+      // If profile error exists, don't wait indefinitely
+      if (profileError) {
+        setIsLoading(false)
+        return
+      }
+      console.log('[Meetings] Waiting for organization data...')
+      return
+    }
 
     const fetchData = async () => {
       setIsLoading(true)
@@ -110,7 +135,13 @@ export default function MeetingsPage() {
     }
 
     fetchData()
-  }, [user, authLoading, supabase, organization?.organizationId])
+  }, [user, authLoading, profileLoading, supabase, organization?.organizationId, profileError])
+
+  // Callback for when profile retry succeeds
+  const handleProfileRetrySuccess = useCallback(() => {
+    console.log('[Meetings] Profile retry succeeded, will refetch data')
+    // Data will be refetched automatically due to useEffect dependencies
+  }, [])
 
   useEffect(() => {
     if (profile) {
@@ -216,7 +247,7 @@ export default function MeetingsPage() {
   const pastMeetings = meetings.filter((m) => new Date(m.meeting_time) <= new Date())
 
   // Show skeleton while loading
-  if (authLoading || isLoading) {
+  if (authLoading || profileLoading || isLoading) {
     return <MeetingsListSkeleton />
   }
 
@@ -225,6 +256,9 @@ export default function MeetingsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Profile Error Banner */}
+        <ProfileErrorBanner onRetrySuccess={handleProfileRetrySuccess} showSignOut={true} />
+
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
             <div>

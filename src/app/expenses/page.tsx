@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'react-hot-toast'
+import { ProfileErrorBanner } from '@/components/ProfileErrorBanner'
 import { Plus, TrendingUp, Users, Package, X, Calendar, FileText, Eye } from 'lucide-react'
 import Rupee from '@/components/Rupee'
 import { formatCurrency } from '@/lib/utils'
@@ -69,7 +70,7 @@ interface TeamMemberOption {
 }
 
 function ExpensesPageContent() {
-  const { user, organization } = useAuth()
+  const { user, organization, profileError, profileLoading, profile } = useAuth()
   const searchParams = useSearchParams()
   const preselectedProjectId = searchParams?.get('project')
   const preselectedMemberId = searchParams?.get('member')
@@ -113,11 +114,29 @@ function ExpensesPageContent() {
   const [prefillHandled, setPrefillHandled] = useState(false)
 
   useEffect(() => {
+    // Wait for profile loading to complete before fetching data
+    if (profileLoading) return
+
+    // If there's a profile error but no organization, don't fetch data
+    if (profileError && !organization) {
+      setLoading(false)
+      return
+    }
+
     if (user && organization) {
       fetchData()
+    } else if (!profileLoading && user && !organization) {
+      // If profile loaded but no organization, stop loading
+      setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, organization])
+  }, [user, organization, profileLoading, profileError])
+
+  // Callback for when profile retry succeeds
+  const handleProfileRetrySuccess = useCallback(() => {
+    console.log('[Expenses] Profile retry succeeded, will refetch data')
+    // Data will be refetched automatically due to useEffect dependencies
+  }, [])
 
   useEffect(() => {
     if (!prefillHandled && (preselectedProjectId || preselectedMemberId)) {
@@ -639,7 +658,7 @@ function ExpensesPageContent() {
     return assignedProjects.some((proj) => proj.id === expense.project_id)
   })
 
-  if (loading) {
+  if (loading || profileLoading) {
     return (
       <div className="p-6">
         <div className="animate-pulse">
@@ -656,6 +675,9 @@ function ExpensesPageContent() {
 
   return (
     <div className="p-6">
+      {/* Profile Error Banner */}
+      <ProfileErrorBanner onRetrySuccess={handleProfileRetrySuccess} showSignOut={true} />
+
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>

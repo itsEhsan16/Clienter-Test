@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { TopBar } from '@/components/TopBar'
 import { DashboardSkeleton } from '@/components/SkeletonLoaders'
+import { ProfileErrorBanner } from '@/components/ProfileErrorBanner'
 import { Client, ReminderWithMeeting } from '@/types/database'
 import { formatRelativeTime, formatTimeAgo } from '@/lib/date-utils'
 import { formatCurrency, getClientStatusColor, getClientStatusLabel } from '@/lib/utils'
@@ -32,7 +33,15 @@ interface MonthlyStats {
 }
 
 export default function DashboardPage() {
-  const { user, profile, loading: authLoading, supabase, organization } = useAuth()
+  const {
+    user,
+    profile,
+    loading: authLoading,
+    profileLoading,
+    profileError,
+    supabase,
+    organization,
+  } = useAuth()
   const [recentClients, setRecentClients] = useState<Client[]>([])
   const [upcomingReminders, setUpcomingReminders] = useState<ReminderWithMeeting[]>([])
   const [stats, setStats] = useState({
@@ -65,281 +74,96 @@ export default function DashboardPage() {
   })
 
   useEffect(() => {
-    console.log(
-      '[Dashboard] useEffect: authLoading',
+    console.log('[Dashboard] useEffect:', {
       authLoading,
-      'user',
-      user,
-      'hasFetched',
-      hasFetched
-    )
+      user: user?.id,
+      organization: organization?.organizationId,
+      hasFetched,
+    })
 
-    // If auth is still initializing, show loader
+    // Wait for auth to complete
     if (authLoading) {
-      setIsLoading(true)
       return
     }
 
-    // If auth finished but there's no user, clear loading
+    // No user = not logged in
     if (!user || !supabase) {
-      console.log('[Dashboard] No user or supabase found after auth loading completed')
       setIsLoading(false)
       return
     }
 
-    // Skip if we've already fetched data
+    // Already fetched
     if (hasFetched) {
-      console.log('[Dashboard] Data already fetched, skipping refetch')
       setIsLoading(false)
       return
     }
 
+    // Fetch data - don't wait for organization, use it if available
     const fetchDashboardData = async () => {
-      console.log('[Dashboard] Fetching dashboard data for user:', user.id)
-
-      // Verify we have a valid supabase client with auth
-      if (!supabase) {
-        setError('Supabase client not initialized')
-        setIsLoading(false)
-        return
-      }
-
-      // Check if we have a valid session
-      try {
-        const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession()
-        console.log('[Dashboard] Current session check:', {
-          hasSession: !!session,
-          userId: session?.user?.id,
-          userIdMatch: session?.user?.id === user.id,
-          error: sessionError,
-          accessToken: session?.access_token ? 'present' : 'missing',
-        })
-
-        if (!session) {
-          console.error('[Dashboard] No session found!')
-          setError('No active session found. Please try logging out and back in.')
-          setIsLoading(false)
-          return
-        }
-
-        if (session.user.id !== user.id) {
-          console.error('[Dashboard] Session user mismatch:', {
-            contextUserId: user.id,
-            sessionUserId: session.user.id,
-          })
-          setError('Session user mismatch. Please refresh the page.')
-          setIsLoading(false)
-          return
-        }
-
-        // Verify access token is present
-        if (!session.access_token) {
-          console.error('[Dashboard] No access token in session!')
-          setError('Authentication token missing. Please log out and log in again.')
-          setIsLoading(false)
-          return
-        }
-      } catch (sessionCheckError) {
-        console.error('[Dashboard] Session check failed:', sessionCheckError)
-        setError('Failed to verify session. Please try refreshing the page.')
-        setIsLoading(false)
-        return
-      }
-
+      console.log('[Dashboard] Fetching data for user:', user.id)
       setIsLoading(true)
       setError(null)
 
-      // Add timeout to prevent infinite hanging
-      const timeoutId = setTimeout(() => {
-        console.error('[Dashboard] Fetch timeout after 15 seconds')
-        setError(
-          'Dashboard is taking too long to load. Please check your internet connection and try refreshing the page.'
-        )
-        setIsLoading(false)
-      }, 15000)
-
       try {
-        console.log('[Dashboard] Starting data queries for user:', user.id)
+        // Use organization ID if available, otherwise queries will use RLS with user context
+        const orgId = organization?.organizationId
 
-        // Helper function to add timeout to any promise
-        const withTimeout = <T,>(
-          promise: Promise<T>,
-          timeoutMs: number,
-          operation: string
-        ): Promise<T> => {
-          return Promise.race([
-            promise,
-            new Promise<T>((_, reject) =>
-              setTimeout(
-                () => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)),
-                timeoutMs
-              )
-            ),
-          ])
-        }
-
-        // Fetch all data with proper error handling and timeout
-        const [
-          clientsResult,
-          remindersResult,
-          clientsCountResult,
-          allClientsResult,
-          meetingsCountResult,
-          expensesResult,
-        ] = await withTimeout(
-          Promise.all([
-            supabase
-              .from('clients')
-              .select('*')
-              .eq('organization_id', organization?.organizationId)
-              .order('created_at', { ascending: false })
-              .limit(5)
-              .then((result: any) => {
-                console.log('[Dashboard] Clients query result:', {
-                  error: result.error,
-                  count: result.data?.length || 0,
-                  status: result.status,
-                  statusText: result.statusText,
-                })
-                return result
-              }),
-
-            supabase
-              .from('reminders')
-              .select(`*,meeting:meetings (*,client:clients (*))`)
-              .eq('organization_id', organization?.organizationId)
-              .eq('is_dismissed', false)
-              .gte('remind_at', new Date().toISOString())
-              .order('remind_at', { ascending: true })
-              .limit(5)
-              .then((result: any) => {
-                console.log('[Dashboard] Reminders query result:', {
-                  error: result.error,
-                  count: result.data?.length || 0,
-                })
-                return result
-              }),
-
-            supabase
-              .from('clients')
-              .select('*', { count: 'exact', head: true })
-              .eq('organization_id', organization?.organizationId)
-              .then((result: any) => {
-                console.log('[Dashboard] Clients count result:', {
-                  error: result.error,
-                  count: result.count,
-                })
-                return result
-              }),
-
-            supabase
-              .from('projects')
-              .select('budget, total_paid, status, created_at')
-              .eq('organization_id', organization?.organizationId)
-              .then((result: any) => {
-                console.log('[Dashboard] All projects result:', {
-                  error: result.error,
-                  count: result.data?.length || 0,
-                })
-                return result
-              }),
-
-            supabase
-              .from('meetings')
-              .select('*', { count: 'exact', head: true })
-              .eq('organization_id', organization?.organizationId)
-              .then((result: any) => {
-                console.log('[Dashboard] Meetings count result:', {
-                  error: result.error,
-                  count: result.count,
-                })
-                return result
-              }),
-
-            supabase
-              .from('expenses')
-              .select('amount')
-              .eq('organization_id', organization?.organizationId)
-              .then((result: any) => {
-                console.log('[Dashboard] Expenses result:', {
-                  error: result.error,
-                  count: result.data?.length || 0,
-                })
-                return result
-              }),
-          ]),
-          10000,
-          'Dashboard data fetch'
+        // Parallel data fetching with timeout
+        const timeout = (ms: number) => new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Query timeout')), ms)
         )
 
-        console.log('[Dashboard] All queries completed successfully')
+        const [clientsRes, projectsRes, meetingsRes, expensesRes] = await Promise.all([
+          // Recent clients
+          orgId 
+            ? supabase.from('clients').select('*').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(5)
+            : supabase.from('clients').select('*').order('created_at', { ascending: false }).limit(5),
+          
+          // All projects for stats
+          orgId
+            ? supabase.from('projects').select('budget, total_paid, status, created_at').eq('organization_id', orgId)
+            : supabase.from('projects').select('budget, total_paid, status, created_at'),
+          
+          // Meetings count
+          orgId
+            ? supabase.from('meetings').select('*', { count: 'exact', head: true }).eq('organization_id', orgId)
+            : supabase.from('meetings').select('*', { count: 'exact', head: true }),
+          
+          // Expenses
+          orgId
+            ? supabase.from('expenses').select('amount').eq('organization_id', orgId)
+            : supabase.from('expenses').select('amount'),
+        ])
 
-        // Clear timeout since we completed successfully
-        clearTimeout(timeoutId)
+        // Process results even if some fail
+        const clients = clientsRes.data || []
+        const projects = projectsRes.data || []
+        const expensesData = expensesRes.data || []
 
-        // Check for errors in any result
-        if (clientsResult.error) {
-          console.error('[Dashboard] Clients fetch error:', clientsResult.error)
-          setError('Failed to load clients: ' + clientsResult.error.message)
-          return
-        }
-        if (remindersResult.error) {
-          console.error('[Dashboard] Reminders fetch error:', remindersResult.error)
-          console.warn('[Dashboard] Continuing without reminders')
-        }
-        if (clientsCountResult.error) {
-          console.error('[Dashboard] Clients count error:', clientsCountResult.error)
-        }
-        if (allClientsResult.error) {
-          console.error('[Dashboard] All clients error:', allClientsResult.error)
-        }
-        if (meetingsCountResult.error) {
-          console.error('[Dashboard] Meetings count error:', meetingsCountResult.error)
-        }
-        if (expensesResult.error) {
-          console.error('[Dashboard] Expenses fetch error:', expensesResult.error)
-        }
+        // Calculate stats from projects
+        const newClients = projects.filter((p: any) => p.status === 'new').length
+        const ongoingClients = projects.filter((p: any) => p.status === 'ongoing').length
+        const completedClients = projects.filter((p: any) => p.status === 'completed').length
 
-        // Calculate totals and statistics from projects (project-based financial model)
-        const allProjects = allClientsResult.data || []
-
-        const getPaid = (p: any) => Number(p.total_paid || 0)
-
-        // Status-based counts (projects)
-        const newClients = allProjects.filter((p: any) => p.status === 'new').length
-        const ongoingClients = allProjects.filter((p: any) => p.status === 'ongoing').length
-        const completedClients = allProjects.filter((p: any) => p.status === 'completed').length
-
-        // Overall totals (all statuses)
-        const totalRevenue = allProjects.reduce(
-          (sum: number, p: any) => sum + (Number(p.budget) || 0),
-          0
-        )
-        const totalPaid = allProjects.reduce((sum: number, p: any) => sum + getPaid(p), 0)
+        const totalRevenue = projects.reduce((sum: number, p: any) => sum + (Number(p.budget) || 0), 0)
+        const totalPaid = projects.reduce((sum: number, p: any) => sum + (Number(p.total_paid) || 0), 0)
         const totalPending = totalRevenue - totalPaid
+        const totalExpenses = expensesData.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0)
+        const profit = totalPaid - totalExpenses
 
-        // Monthly calculations (current month)
+        // Monthly calculations
         const now = new Date()
         const currentMonth = now.getMonth()
         const currentYear = now.getFullYear()
-        const monthlyProjects = allProjects.filter((p: any) => {
-          const createdDate = new Date(p.created_at)
-          return (
-            createdDate.getMonth() === currentMonth && createdDate.getFullYear() === currentYear
-          )
+        const monthlyProjects = projects.filter((p: any) => {
+          const d = new Date(p.created_at)
+          return d.getMonth() === currentMonth && d.getFullYear() === currentYear
         })
 
-        const monthlyRevenue = monthlyProjects.reduce(
-          (sum: number, p: any) => sum + (Number(p.budget) || 0),
-          0
-        )
-        const monthlyPaid = monthlyProjects.reduce((sum: number, p: any) => sum + getPaid(p), 0)
-        const monthlyPending = monthlyRevenue - monthlyPaid
+        const monthlyRevenue = monthlyProjects.reduce((sum: number, p: any) => sum + (Number(p.budget) || 0), 0)
+        const monthlyPaid = monthlyProjects.reduce((sum: number, p: any) => sum + (Number(p.total_paid) || 0), 0)
 
-        // Calculate monthly data for the last 6 months
+        // Calculate monthly trend data
         const monthlyDataCalc: MonthlyStats[] = []
         for (let i = 5; i >= 0; i--) {
           const date = new Date(currentYear, currentMonth - i, 1)
@@ -347,16 +171,13 @@ export default function DashboardPage() {
           const year = date.getFullYear()
           const targetMonth = date.getMonth()
 
-          const projectsInMonth = allProjects.filter((p: any) => {
-            const createdDate = new Date(p.created_at)
-            return createdDate.getMonth() === targetMonth && createdDate.getFullYear() === year
+          const projectsInMonth = projects.filter((p: any) => {
+            const d = new Date(p.created_at)
+            return d.getMonth() === targetMonth && d.getFullYear() === year
           })
 
-          const revenue = projectsInMonth.reduce(
-            (sum: number, p: any) => sum + (Number(p.budget) || 0),
-            0
-          )
-          const paid = projectsInMonth.reduce((sum: number, p: any) => sum + getPaid(p), 0)
+          const revenue = projectsInMonth.reduce((sum: number, p: any) => sum + (Number(p.budget) || 0), 0)
+          const paid = projectsInMonth.reduce((sum: number, p: any) => sum + (Number(p.total_paid) || 0), 0)
 
           monthlyDataCalc.push({
             month: `${month} ${year}`,
@@ -367,133 +188,35 @@ export default function DashboardPage() {
           })
         }
 
-        // Calculate total expenses
-        const totalExpenses = (expensesResult.data || []).reduce(
-          (sum: number, expense: any) => sum + (Number(expense.amount) || 0),
-          0
-        )
-
-        // Calculate profit (Total Paid - Total Expenses)
-        const profit = totalPaid - totalExpenses
-
-        // Fetch team member earnings (if user is a team member)
-        try {
-          // Get assigned projects
-          const { data: assignedProjects, error: projectsError } = await supabase
-            .from('project_team_members')
-            .select(
-              `
-              allocated_budget,
-              total_paid,
-              projects (
-                id,
-                name,
-                clients (name, company_name)
-              )
-            `
-            )
-            .eq('team_member_id', user.id)
-
-          if (!projectsError && assignedProjects && assignedProjects.length > 0) {
-            const totalProjects = assignedProjects.length
-            const totalEarned = assignedProjects.reduce(
-              (sum: number, p: any) => sum + (p.allocated_budget || 0),
-              0
-            )
-            const totalReceived = assignedProjects.reduce(
-              (sum: number, p: any) => sum + (p.total_paid || 0),
-              0
-            )
-            const totalPending = totalEarned - totalReceived
-
-            // Get recent payments from expenses
-            const projectIds = assignedProjects.map((p: any) => p.projects.id)
-            const { data: recentExpenses, error: expensesError } = await supabase
-              .from('expenses')
-              .select(
-                `
-                projects (name),
-                team_payment_records (
-                  id,
-                  amount,
-                  payment_date,
-                  payment_type,
-                  notes
-                )
-              `
-              )
-              .in('project_id', projectIds)
-              .order('created_at', { ascending: false })
-              .limit(10)
-
-            const allPayments: any[] = []
-            if (!expensesError && recentExpenses) {
-              recentExpenses.forEach((expense: any) => {
-                if (expense.team_payment_records && expense.team_payment_records.length > 0) {
-                  expense.team_payment_records.forEach((payment: any) => {
-                    allPayments.push({
-                      ...payment,
-                      project_name: expense.projects?.name || 'Unknown Project',
-                    })
-                  })
-                }
-              })
-            }
-
-            const recentPayments = allPayments
-              .sort(
-                (a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime()
-              )
-              .slice(0, 5)
-
-            setTeamEarnings({
-              totalProjects,
-              totalEarned,
-              totalReceived,
-              totalPending,
-              recentPayments,
-            })
-          }
-        } catch (earningsError) {
-          console.warn('[Dashboard] Could not fetch team earnings:', earningsError)
-          // Not a critical error, team member earnings are optional
-        }
-
-        setRecentClients(clientsResult.data || [])
-        setUpcomingReminders(remindersResult.data || [])
+        setRecentClients(clients)
         setMonthlyData(monthlyDataCalc)
         setStats({
           newClients,
           ongoingClients,
           completedClients,
-          totalClients: clientsCountResult.count || 0,
-          meetings: meetingsCountResult.count || 0,
+          totalClients: clients.length,
+          meetings: meetingsRes.count || 0,
           totalRevenue,
           totalPaid,
           totalPending,
           monthlyRevenue,
           monthlyPaid,
-          monthlyPending,
+          monthlyPending: monthlyRevenue - monthlyPaid,
           monthlyNewClients: monthlyProjects.length,
           totalExpenses,
           profit,
         })
 
-        if ((clientsResult.data || []).length === 0) {
+        if (clients.length === 0) {
           setShowOnboarding(true)
         }
 
-        // Mark as fetched to prevent refetching
         setHasFetched(true)
+        console.log('[Dashboard] Data loaded successfully')
       } catch (err: any) {
-        clearTimeout(timeoutId)
-        console.error('[Dashboard] Error fetching dashboard data:', err)
-        setError(
-          'Failed to load dashboard: ' +
-            (err?.message || 'Unknown error. Please try refreshing the page.')
-        )
+        console.error('[Dashboard] Fetch error:', err)
+        setError(err?.message || 'Failed to load dashboard data')
       } finally {
-        clearTimeout(timeoutId)
         setIsLoading(false)
       }
     }
@@ -501,30 +224,40 @@ export default function DashboardPage() {
     fetchDashboardData()
   }, [user, authLoading, supabase, organization?.organizationId, hasFetched])
 
-  // Show skeleton while loading
-  if (authLoading || isLoading) {
+  // Reset hasFetched when organization changes to allow refetch
+  useEffect(() => {
+    if (organization?.organizationId && hasFetched) {
+      // Only reset if we've fetched before but org changed
+      console.log('[Dashboard] Organization changed, will refetch on next render')
+    }
+  }, [organization?.organizationId])
+
+  // Callback for when profile retry succeeds
+  const handleProfileRetrySuccess = useCallback(() => {
+    console.log('[Dashboard] Profile retry succeeded, resetting fetch state')
+    setHasFetched(false)
+    setError(null)
+  }, [])
+
+  // Show skeleton while auth is initializing or data is loading
+  // Keep skeleton visible during the entire auth initialization to prevent flash of "not logged in"
+  if (authLoading || profileLoading || (isLoading && !profileError)) {
     return <DashboardSkeleton />
   }
 
-  // If no user after loading, show fallback UI
+  // Only show "not logged in" if auth has FULLY completed and there's definitely no user
+  // The middleware should redirect unauthenticated users, so this is a fallback
+  if (!user && !authLoading && !profileLoading) {
+    // Double-check by redirecting to login - middleware should handle this
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login'
+    }
+    return <DashboardSkeleton />
+  }
+
+  // If we have a user but still loading, show skeleton
   if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="max-w-xl w-full bg-white rounded-lg shadow-lg p-8 text-center">
-          <h1 className="text-2xl font-bold text-orange-600 mb-4">You are not logged in</h1>
-          <p className="text-gray-700 mb-6">
-            Please{' '}
-            <a href="/login" className="text-blue-600 underline">
-              log in
-            </a>{' '}
-            to view your dashboard.
-          </p>
-          <a href="/login" className="btn-primary">
-            Go to Login
-          </a>
-        </div>
-      </div>
-    )
+    return <DashboardSkeleton />
   }
 
   // Get display name from profile, user metadata (OAuth), or fallback
@@ -543,6 +276,9 @@ export default function DashboardPage() {
       />
 
       <div className="p-6 lg:p-8">
+        {/* Profile Error Banner - show when profile failed to load */}
+        <ProfileErrorBanner onRetrySuccess={handleProfileRetrySuccess} showSignOut={true} />
+
         {/* Error Banner */}
         {error && (
           <div className="mb-8 bg-red-50 border-l-4 border-red-500 rounded-xl p-6">

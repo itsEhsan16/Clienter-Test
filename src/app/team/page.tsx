@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
+import { ProfileErrorBanner } from '@/components/ProfileErrorBanner'
 import {
   UserPlus,
   Edit2,
@@ -24,7 +25,14 @@ import { OrganizationMemberWithProfile } from '@/types/database'
 import toast from 'react-hot-toast'
 
 export default function TeamPage() {
-  const { user, organization, loading: authLoading } = useAuth()
+  const {
+    user,
+    organization,
+    loading: authLoading,
+    profileError,
+    profileLoading,
+    profile,
+  } = useAuth()
   const router = useRouter()
   const [teamMembers, setTeamMembers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -44,10 +52,16 @@ export default function TeamPage() {
     organization?.role === 'owner' || organization?.role === 'admin' || !organization
 
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && !profileLoading && user) {
       loadTeamMembers()
     }
-  }, [user, authLoading])
+  }, [user, authLoading, profileLoading])
+
+  // Callback for when profile retry succeeds
+  const handleProfileRetrySuccess = useCallback(() => {
+    console.log('[Team] Profile retry succeeded, reloading data')
+    loadTeamMembers()
+  }, [])
 
   const loadTeamMembers = async () => {
     if (!user) return
@@ -146,7 +160,7 @@ export default function TeamPage() {
     return null
   }
 
-  if (loading) {
+  if (loading || authLoading || profileLoading) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-6xl mx-auto">
@@ -162,6 +176,9 @@ export default function TeamPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-8 text-gray-900">
       <div className="max-w-6xl mx-auto">
+        {/* Profile Error Banner */}
+        <ProfileErrorBanner onRetrySuccess={handleProfileRetrySuccess} showSignOut={true} />
+
         {/* Setup Notice - Show if organization not loaded */}
         {!organization && (
           <div className="mb-6 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
